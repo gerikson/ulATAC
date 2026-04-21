@@ -1,0 +1,96 @@
+---
+title: "PCA"
+author: "Galina Erikson"
+date: "2026-04-13"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Loading in data, make a PCA
+Eingenvalues were calculated using: plotPCA --corData peakset/counts.bw.npz -o figures/PCA.png --transpose --ntop 5000
+```{r}
+pca <- read.table("/data/jenuwein/erikson/2026/ulATAC/bams_allData_withDiffATAC/bw/PCAeigenvalue.tab", header = TRUE, row.names = 1)
+```
+
+Plot
+```{r}
+pca_t <- as.data.frame(t(pca))
+pca_t <- pca_t[rownames(pca_t) != "Eigenvalue", ]
+pca_t$stage <- sub("_WT.*", "", rownames(pca_t))
+pca_t$color <- with(pca_t, ifelse(stage == "Zygote", "red",
+                          ifelse(stage == "X2Cells", "yellow",
+                          ifelse(stage == "X8Cells", "green",
+                          ifelse(stage == "Morula", "blue",
+                          ifelse(stage == "Blastocyst", "purple", "black"))))))
+
+library(ggplot2)
+
+pca_t$PC1 <- pca_t[,1]
+pca_t$PC2 <- pca_t[,2]
+ggplot(pca_t, aes(x = PC1, y = PC2, color = stage)) +
+  geom_point(size = 2) +
+  scale_color_manual(values = c(
+    "Zygote" = "red",
+    "X2Cells" = "yellow",
+    "X8Cells" = "green",
+    "Morula" = "blue",
+    "Blastocyst" = "purple"
+  )) +
+  theme_classic()
+```
+#some modification
+```{r}
+pca_t$stage <- gsub("^X", "", pca_t$stage)
+pca_t$stage <- factor(pca_t$stage,
+                      levels = c("Zygote", "2Cells", "8Cells", "Morula", "Blastocyst"))
+ggplot(pca_t, aes(x = PC1, y = PC2, color = stage)) +
+  geom_point(size = 2) +
+  scale_color_manual(
+    values = c(
+      "Zygote" = "red",
+      "2Cells" = "yellow",
+      "8Cells" = "green",
+      "Morula" = "blue",
+      "Blastocyst" = "purple"
+    ),
+    breaks = c("Zygote", "2Cells", "8Cells", "Morula", "Blastocyst"),  # order
+    labels = c("Zygote", "2Cell", "8Cell", "Morula", "Blastocyst")     # legend text
+  ) +
+  theme_classic()
+```
+
+#Doing a PCA for the treatment data plus zygote, eigenvectore generated:
+#(aos3) erikson@deep22:/data/jenuwein/erikson/2026/ulATAC/Project3915_treatment_plusZygotes/aos2/bw$ plotPCA --corData results.npz -o PCA.png --colors blue blue blue blue blue blue blue blue blue blue blue blue blue blue blue green green green green green green green green green green green green green green green green orange orange orange orange orange orange orange orange orange orange orange orange orange orange orange orange orange orange orange orange orange orange orange orange orange orange orange orange orange orange red red red red red red red red red red red red red red red red red red red red red red red red red red red red red --transpose --ntop 5000 --outFileNameData  PCAeigenvalue_treatmentData_Project3915_plusZygote.tab
+
+```{r}
+pca <- read.table("/data/jenuwein/erikson/2026/ulATAC/Project3915_treatment_plusZygotes/aos2/bw/PCAeigenvalue_treatmentData_Project3915_plusZygote.tab", header = TRUE, row.names = 1)
+pca_t <- as.data.frame(t(pca))
+pca_t <- pca_t[rownames(pca_t) != "Eigenvalue", ]
+pca_t$stage <- sub("_rep.*", "", rownames(pca_t))
+pca_t$stage <- sub("^X", "", pca_t$stage)
+pca_t$stage <- sub("_WT$", "", pca_t$stage)
+
+pca_t$color <- NULL
+
+pca_t$PC1 <- pca_t[,1]
+pca_t$PC2 <- pca_t[,2]
+
+pca_t$stage <- gsub("^X", "", pca_t$stage)
+pca_t$stage <- factor(pca_t$stage,
+                      levels = c("2Cell_ctrl", "2Cell_A485", "2Cells", "Zygote"))
+
+p<-ggplot(pca_t, aes(x = PC1, y = PC2, color = stage)) +
+  geom_point(size = 2) +
+  scale_color_manual(values = c(
+    "2Cell_ctrl" = "red",
+    "2Cell_A485" = "yellow",
+    "2Cells" = "green",
+    "Zygote" = "purple"
+  )) +
+  theme_classic()
+
+ggsave("/data/jenuwein/erikson/2026/ulATAC/Project3915_treatment_plusZygotes/PCA.png", plot = p, width = 6, height = 5, dpi = 300)
+```
