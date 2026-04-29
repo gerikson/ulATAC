@@ -1,0 +1,248 @@
+---
+title: "GSE159484_shanonEntropy"
+author: "Galina Erikson"
+date: "2026-04-28"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+counts <- read.table(file="/data/akhtar/group6/erikson_for_babesh/20260421_RNAseq_GSE159484/mRNAseq_GSE159484/featureCounts/counts.tsv", header = TRUE, row.names = 1, sep = "\t", check.names = FALSE)
+
+late_2cell_cols  <- colnames(counts)[grep("^late_2-cell", colnames(counts))]
+early_8cell_cols <- colnames(counts)[grep("^early_8-cell", colnames(counts))]
+morula_cols      <- colnames(counts)[grep("^morula", colnames(counts))]
+blastocyst_cols  <- colnames(counts)[grep("^blastocyst", colnames(counts))]
+
+# Disregard morula_rep1
+morula_cols <- morula_cols[!grepl("morula_rep1", morula_cols)]
+ordered_columns <- c(late_2cell_cols, early_8cell_cols, morula_cols, blastocyst_cols)
+
+# Subset the matrix
+filtered_counts <- counts[, ordered_columns]
+```
+
+```{r}
+library(edgeR)
+
+# 1. Load the gene lengths we just created
+gene_len_tab <- read.table("/data/akhtar/group6/erikson_for_babesh/20260421_RNAseq_GSE159484/mRNAseq_GSE159484/featureCounts/gene_lengths.tsv", header = FALSE, sep = "\t", col.names = c("GeneID", "Length"))
+
+# 2. Match lengths to your filtered_counts rows
+# This ensures the order of lengths matches the order of genes in your matrix
+matched_indices <- match(rownames(filtered_counts), gene_len_tab$GeneID)
+gene_lengths <- gene_len_tab$Length[matched_indices]
+
+# Handle any missing genes (if any genes in counts aren't in GTF)
+gene_lengths[is.na(gene_lengths)] <- median(gene_lengths, na.rm = TRUE)
+
+# 3. Calculate TPM
+# Step A: Divide counts by length (in kilobases) -> RPK
+rpk <- filtered_counts / (gene_lengths / 1000)
+
+# Step B: Divide RPK by column sums and multiply by 1e6 -> TPM
+tpm <- sweep(rpk, 2, colSums(rpk), "/") * 1e6
+
+# 4. Calculate Shannon Entropy (in bits)
+# Note: We divide TPM by 1e6 inside the function to get true probabilities (sum to 1)
+shannon_entropy <- apply(tpm, 2, function(col) {
+  p <- col / sum(col)
+  p <- p[p > 0]
+  return(-sum(p * log2(p)))
+})
+
+# 5. Format results
+final_results <- data.frame(
+  Sample = names(shannon_entropy),
+  Entropy = as.numeric(shannon_entropy)
+)
+
+print(final_results)
+
+```
+
+
+```{r}
+# Ensure TPM is a numeric matrix
+tpm_mat <- as.matrix(tpm)
+
+# Extract Stage names from columns
+# This regex strips everything from "_rep" onwards
+stage_vector <- gsub("_rep.*", "", colnames(tpm_mat))
+unique_stages <- c("late_2-cell", "early_8-cell", "morula", "blastocyst")
+
+# Calculate Mean TPM per stage
+tpm_stage_mean <- sapply(unique_stages, function(st) {
+    # Find columns belonging to this stage
+    cols <- which(stage_vector == st)
+    
+    # If a stage has multiple columns, take the rowMeans
+    # If only one column, return as is
+    if(length(cols) > 1) {
+        return(rowMeans(tpm_mat[, cols]))
+    } else {
+        return(tpm_mat[, cols])
+    }
+})
+
+# Convert back to a matrix and keep Gene IDs
+tpm_stage_mean <- as.matrix(tpm_stage_mean)
+rownames(tpm_stage_mean) <- rownames(tpm_mat)
+
+```
+
+```{r}
+# Shannon Entropy function
+calc_entropy <- function(x) {
+    p <- x / sum(x)
+    p <- p[p > 0]
+    if(length(p) == 0) return(0)
+    return(-sum(p * log2(p)))
+}
+
+# Apply row-wise (to each gene)
+gene_entropies <- apply(tpm_stage_mean, 1, calc_entropy)
+
+# Create a master table
+gene_summary <- data.frame(
+    GeneID = rownames(tpm_stage_mean),
+    Entropy = gene_entropies,
+    tpm_stage_mean
+)
+```
+
+```{r}
+# Example: Genes specifically "active" in the Blastocyst stage
+# (High expression in blastocyst, but low entropy across all stages)
+blastocyst_active <- gene_summary[gene_summary$blastocyst > 10 & gene_summary$Entropy < 1.0, ]
+
+# Example: Broadly active genes (High entropy, active across stages)
+housekeeping_active <- gene_summary[rowMeans(tpm_stage_mean) > 10 & gene_summary$Entropy > 1.8, ]
+
+# Save the Gene IDs to a list for your ATAC tool
+write.table(blastocyst_active$GeneID, "blastocyst_specific_genes.txt", 
+            row.names = FALSE, col.names = FALSE, quote = FALSE)
+
+Morula_active <- gene_summary[gene_summary$morula > 10 & gene_summary$Entropy < 1.0, ]
+
+write.table(Morula_active$GeneID, "morula_specific_genes.txt", 
+            row.names = FALSE, col.names = FALSE, quote = FALSE)
+
+late_2.cell_active <- gene_summary[gene_summary$late_2.cell > 10 & gene_summary$Entropy < 1.0, ]
+
+write.table(Morula_active$GeneID, "late_2cell_specific_genes.txt", 
+            row.names = FALSE, col.names = FALSE, quote = FALSE)
+
+early_8.cell_active <- gene_summary[gene_summary$early_8.cell > 10 & gene_summary$Entropy < 1.0, ]
+
+write.table(Morula_active$GeneID, "late_2cell_specific_genes.txt", 
+            row.names = FALSE, col.names = FALSE, quote = FALSE)
+
+```
+
+#save active genes to bed file plus coordinates for plotting
+```{r}
+library(edgeR)
+
+
+# ----------------------------------------------------------------              
+gtf_path <- "/data/repository/organisms/GRCm38_ensembl/gencode/m19/genes.gtf"
+gtf <- read.table(gtf_path, sep="\t", header=FALSE, comment.char="#", stringsAsFactors=FALSE)
+colnames(gtf) <- c("chr", "source", "feature", "start", "end", "score", "strand", "frame", "attributes")
+
+# Filter for 'gene' entries
+genes_gtf <- gtf[gtf$feature == "gene", ]
+
+# Extract IDs: This regex handles "gene_id ENSMUSGxxx.x;" with or without quotes
+genes_gtf$ID <- gsub(".*gene_id \"?([^; \"]+)\"?.*", "\\1", genes_gtf$attributes)
+
+# MATCH GTF TO YOUR FILTERED COUNTS
+# ----------------------------------------------------------------
+# Assuming 'filtered_counts' is your matrix from previous steps
+matched_idx <- match(rownames(filtered_counts), genes_gtf$ID)
+
+# Create a coordinate data frame aligned to your counts
+gene_coords <- data.frame(
+    chr    = genes_gtf$chr[matched_idx],
+    start  = genes_gtf$start[matched_idx],
+    end    = genes_gtf$end[matched_idx],
+    ID     = rownames(filtered_counts),
+    score  = ".",
+    strand = genes_gtf$strand[matched_idx]
+)
+
+# CALCULATE TPM NORMALIZATION
+# ----------------------------------------------------------------
+# Get lengths from the GTF (End - Start + 1)
+lengths_bp <- (genes_gtf$end[matched_idx] - genes_gtf$start[matched_idx]) + 1
+
+# Calculate RPK (Reads Per Kilobase)
+rpk <- filtered_counts / (lengths_bp / 1000)
+
+# Calculate TPM (Transcripts Per Million)
+tpm <- sweep(rpk, 2, colSums(rpk), "/") * 1e6
+tpm_mat <- as.matrix(tpm)
+
+# CALCULATE STAGE MEANS AND GENE-WISE ENTROPY
+# ----------------------------------------------------------------
+unique_stages <- c("late_2-cell", "early_8-cell", "morula", "blastocyst")
+stage_vector  <- gsub("_rep.*", "", colnames(tpm_mat))
+
+# Average TPM per stage
+tpm_stage_mean <- sapply(unique_stages, function(st) {
+    cols <- which(stage_vector == st)
+    if(length(cols) > 1) rowMeans(tpm_mat[, cols]) else tpm_mat[, cols]
+})
+
+# Shannon Entropy Function (Gene-wise diversity across stages)
+calc_entropy <- function(x) {
+    p <- x / sum(x); p <- p[p > 0]
+    if(length(p) == 0) return(0)
+    -sum(p * log2(p))
+}
+gene_entropies <- apply(tpm_stage_mean, 1, calc_entropy)
+
+# INTEGRATE AND SAVE
+# ----------------------------------------------------------------
+final_table <- cbind(gene_coords, Entropy = gene_entropies, tpm_stage_mean)
+
+# Filter out genes that weren't found in GTF (NAs)
+final_table <- final_table[!is.na(final_table$chr), ]
+
+# Save full data for R
+write.table(final_table, "transcriptome_entropy_coords.tsv", sep="\t", quote=F, row.names=F)
+
+# Save BED for ATAC-seq (Chromatin accessibility profiling)
+# Columns: chr, start, end, name, score, strand
+write.table(final_table[, 1:6], 
+            file = "active_genes_for_atac.bed", 
+            sep = "\t", quote = FALSE, row.names = FALSE, col.names = FALSE)
+
+#  SUBSET "ACTIVE" GENES (Optional but helpful)
+# High expression in Blastocyst + High specificity (Low Entropy)
+blasto_spec <- final_table[final_table$blastocyst > 10 & final_table$Entropy < 1.0, ]
+write.table(blasto_spec[, 1:6], "/data/akhtar/group6/erikson_for_babesh/blastocyst_specific_active.bed", 
+            sep="\t", quote=F, row.names=F, col.names=F)
+
+late_2cell_active <- final_table[final_table$`late_2-cell` > 10 & final_table$Entropy < 1.0, ]
+write.table(late_2cell_active[, 1:6], "/data/akhtar/group6/erikson_for_babesh/late_2cell_specific_active.bed", 
+            sep="\t", quote=F, row.names=F, col.names=F)
+
+early_8cell_active <- final_table[final_table$`early_8-cell` > 10 & final_table$Entropy < 1.0, ]
+write.table(early_8cell_active[, 1:6], "/data/akhtar/group6/erikson_for_babesh/early_8cell_specific_active.bed", 
+            sep="\t", quote=F, row.names=F, col.names=F)
+
+morula_active <- final_table[final_table$morula > 10 & final_table$Entropy < 1.0, ]
+write.table(morula_active[, 1:6], "/data/akhtar/group6/erikson_for_babesh/morula_specific_active.bed", 
+            sep="\t", quote=F, row.names=F, col.names=F)
+
+
+
+message("Success: BED files generated for ATAC-seq plotting.")
+
+```
+
