@@ -1,0 +1,738 @@
+---
+title: "ATAC_MAplot"
+author: "Galina Erikson"
+date: "2026-06-16"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r cars}
+summary(cars)
+```
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE}
+# Load required libraries
+library(ggplot2)
+library(dplyr)
+library(readr)
+
+# 1. Read in the edgeR tsv file
+# The file uses standard tab separation
+diff_acc_data <- read_tsv("/data/jenuwein/erikson/2026/ulATAC/bams_Project_3969_pseudoreplicates_AOS_0.13/twogroup/comparison1/comparison1_diffacc_edgeR.tsv")
+
+# 2. Define thresholds for differential accessibility
+# Adjust these thresholds based on your experimental design
+fdr_threshold <- 0.05
+logfc_threshold <- 1.0
+
+# 3. Classify peaks into Open (ctrl), Closed (A485), or Non-Significant
+plot_data <- diff_acc_data %>%
+  mutate(
+    Significance = case_when(
+      FDR < fdr_threshold & logFC > logfc_threshold  ~ "Enriched in Ctrl",
+      FDR < fdr_threshold & logFC < -logfc_threshold ~ "Enriched in A485",
+      TRUE                                           ~ "Not Significant"
+    )
+  )
+
+# Count how many peaks fall into each category
+print(table(plot_data$Significance))
+
+# 4. Generate the enhanced MA Plot
+ma_plot <- ggplot(plot_data, aes(x = logCPM, y = logFC)) +
+  # Use geom_point with alpha blending to handle high-density overlapping points
+  geom_point(aes(color = Significance), size = 1.2, alpha = 0.5) +
+  
+  # Add horizontal helper lines for your logFC thresholds
+  geom_hline(yintercept = c(-logfc_threshold, logfc_threshold), 
+             linetype = "dashed", color = "gray40", size = 0.5) +
+  geom_hline(yintercept = 0, linetype = "solid", color = "black", size = 0.6) +
+  
+  # Custom color palette matching your condition groups
+  scale_color_manual(
+    values = c(
+      "Enriched in Ctrl" = "#de2d26",   # Red
+      "Enriched in A485" = "#3182bd",   # Blue
+      "Not Significant"  = "#969696"    # Muted Gray
+    )
+  ) +
+  
+  # Clean, publication-ready theme
+  theme_minimal(base_size = 14) +
+  theme(
+    panel.grid.minor = element_blank(),
+    legend.position = "top",
+    plot.title = element_text(face = "bold", hjust = 0.5)
+  ) +
+  
+  # Labels
+  labs(
+    title = "MA Plot: Differential Chromatin Accessibility",
+    x = "Average Abundance (logCPM)",
+    y = "Log Fold Change (logFC)",
+    color = "Status"
+  )
+
+# Display the plot
+print(ma_plot)
+
+# Optional: Save the plot to a high-res file
+# ggsave("fixed_ma_plot.png", plot = ma_plot, width = 7, height = 6, dpi = 300)
+```
+```{r}
+# Load required libraries
+library(ggplot2)
+library(dplyr)
+library(readr)
+
+# 1. Read in the edgeR output file
+df <- read_tsv("/data/jenuwein/erikson/2026/ulATAC/bams_Project_3969_pseudoreplicates_AOS_0.13/twogroup/comparison1/comparison1_diffacc_edgeR.tsv")
+
+# 2. Define significance status based on FDR threshold (< 0.05)
+# This prevents the non-significant points from splitting into groups at y = 0
+df <- df %>%
+  mutate(Status = case_when(
+    FDR < 0.05 & logFC > 0 ~ "Enriched in ctrl",
+    FDR < 0.05 & logFC < 0 ~ "Enriched in A485",
+    TRUE                   ~ "Not Significant"
+  ))
+
+# Define a consistent color palette
+group_colors <- c(
+  "Enriched in ctrl" = "#de2d26",   # Red
+  "Enriched in A485" = "#3182bd",   # Blue
+  "Not Significant"  = "#d9d9d9"    # Muted light gray
+)
+
+# ==========================================
+# Plot 1: Corrected MA Plot
+# ==========================================
+ma_plot <- ggplot(df, aes(x = logCPM, y = logFC, color = Status)) +
+  # Plot background non-significant points first, then overlay significant ones
+  geom_point(data = filter(df, Status == "Not Significant"), alpha = 0.4, size = 0.8) +
+  geom_point(data = filter(df, Status != "Not Significant"), alpha = 0.9, size = 1.5) +
+  
+  # Horizontal reference baseline
+  geom_hline(yintercept = 0, linetype = "dashed", color = "black", size = 0.5) +
+  
+  scale_color_manual(values = group_colors) +
+  labs(
+    title = "Differential Chromatin Accessibility (Corrected)",
+    subtitle = "Highlighted peaks pass FDR < 0.05",
+    x = "Average Abundance (logCPM)",
+    y = "Log2 Fold Change (logFC)",
+    color = "Significance Status"
+  ) +
+  theme_minimal(base_size = 14) +
+  theme(
+    panel.grid.minor = element_blank(),
+    plot.title = element_text(face = "bold"),
+    legend.position = "right"
+  )
+
+print(ma_plot)
+
+# ==========================================
+# Plot 2: Bar Chart of Enriched Counts
+# ==========================================
+# Filter out non-significant peaks and count totals
+count_data <- df %>%
+  filter(Status != "Not Significant") %>%
+  count(Status)
+
+bar_plot <- ggplot(count_data, aes(x = Status, y = n, fill = Status)) +
+  geom_bar(stat = "identity", width = 0.5, color = "black", size = 0.3) +
+  # Add text labels on top of each bar
+  geom_text(aes(label = n), vjust = -0.5, fontface = "bold", size = 5) +
+  
+  scale_fill_manual(values = group_colors) +
+  labs(
+    title = "Number of Significantly Enriched Peaks",
+    subtitle = "Threshold: FDR < 0.05",
+    x = "Experimental Group",
+    y = "Peak Count"
+  ) +
+  theme_minimal(base_size = 14) +
+  theme(
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor = element_blank(),
+    plot.title = element_text(face = "bold"),
+    legend.position = "none" # Hide legend since x-axis labels identify groups
+  ) +
+  # Expand y-axis limits slightly to ensure text labels aren't cut off
+  ylim(0, max(count_data$n) * 1.15)
+
+print(bar_plot)
+
+# Optional: Save both plots to high-resolution PNGs
+# ggsave("corrected_ma_plot.png", plot = ma_plot, width = 7, height = 5, dpi = 300)
+# ggsave("enriched_counts_bar.png", plot = bar_plot, width = 5, height = 5, dpi = 300)
+
+```
+```{r}
+# Load required libraries
+library(ggplot2)
+library(dplyr)
+library(readr)
+
+# 1. Read in the edgeR output file
+df <- read_tsv("/data/jenuwein/erikson/2026/ulATAC/bams_Project_3969_pseudoreplicates_AOS_0.13/twogroup/comparison1/comparison1_diffacc_edgeR.tsv")
+
+# 2. Define significance status based on FDR threshold (< 0.05)
+df <- df %>%
+  mutate(Status = case_when(
+    FDR < 0.05 & logFC > 0 ~ "Enriched in ctrl",
+    FDR < 0.05 & logFC < 0 ~ "Enriched in A485",
+    TRUE                   ~ "Not Significant"
+  ))
+
+# 3. Dynamically count the number of peaks in each group for the labels
+counts <- table(df$Status)
+label_ctrl  <- paste0("Enriched in ctrl (", counts["Enriched in ctrl"], ")")
+label_a485  <- paste0("Enriched in A485 (", counts["Enriched in A485"], ")")
+label_nosig <- paste0("Not Significant (", counts["Not Significant"], ")")
+
+# 4. Define the color palette mapping directly to the new dynamic labels
+group_colors <- c(
+  "Enriched in ctrl" = "#de2d26",   # Red
+  "Enriched in A485" = "#3182bd",   # Blue
+  "Not Significant"  = "#d9d9d9"    # Muted light gray
+)
+
+# Replace status strings with the ones containing parenthetical counts
+df <- df %>%
+  mutate(Status_Label = case_when(
+    Status == "Enriched in ctrl" ~ label_ctrl,
+    Status == "Enriched in A485" ~ label_a485,
+    TRUE                         ~ label_nosig
+  ))
+
+# Create a named vector for the scale mapping using the exact label strings
+color_labels <- c(group_colors["Enriched in ctrl"], 
+                  group_colors["Enriched in A485"], 
+                  group_colors["Not Significant"])
+names(color_labels) <- c(label_ctrl, label_a485, label_nosig)
+
+
+# ==========================================
+# Plot 1: Corrected MA Plot with Dynamic Labels
+# ==========================================
+ma_plot <- ggplot(df, aes(x = logCPM, y = logFC, color = Status_Label)) +
+  # Render non-significant background points first
+  geom_point(data = filter(df, Status == "Not Significant"), alpha = 0.4, size = 0.8) +
+  # Overlay the significant points on top
+  geom_point(data = filter(df, Status != "Not Significant"), alpha = 0.9, size = 1.5) +
+  
+  # Reference line at y = 0
+  geom_hline(yintercept = 0, linetype = "dashed", color = "black", size = 0.5) +
+  
+  scale_color_manual(values = color_labels) +
+  labs(
+    title = "Differential Chromatin Accessibility",
+    subtitle = "Statistical Significance Threshold: FDR < 0.05",
+    x = "Average Abundance (logCPM)",
+    y = "Log2 Fold Change (logFC)",
+    color = "Significance Status"
+  ) +
+  theme_minimal(base_size = 14) +
+  theme(
+    panel.grid.minor = element_blank(),
+    plot.title = element_text(face = "bold"),
+    legend.position = "right"
+  )
+
+print(ma_plot)
+
+
+# ==========================================
+# Plot 2: Bar Chart of Enriched Counts with Dynamic Labels
+# ==========================================
+# Filter out non-significant peaks for the bar chart
+count_data <- df %>%
+  filter(Status != "Not Significant") %>%
+  count(Status_Label)
+
+bar_plot <- ggplot(count_data, aes(x = Status_Label, y = n, fill = Status_Label)) +
+  geom_bar(stat = "identity", width = 0.5, color = "black", size = 0.3) +
+  geom_text(aes(label = n), vjust = -0.5, fontface = "bold", size = 5) +
+  
+  scale_fill_manual(values = color_labels) +
+  labs(
+    title = "Number of Significantly Enriched Peaks",
+    subtitle = "Threshold: FDR < 0.05",
+    x = "Experimental Group",
+    y = "Peak Count"
+  ) +
+  theme_minimal(base_size = 14) +
+  theme(
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor = element_blank(),
+    plot.title = element_text(face = "bold"),
+    legend.position = "none"
+  ) +
+  ylim(0, max(count_data$n) * 1.15)
+
+print(bar_plot)
+```
+
+```{r}
+# Load required libraries
+library(readr)
+library(dplyr)
+library(tidyr)
+
+# 1. Read in the edgeR output file
+df <- read_tsv("/data/jenuwein/erikson/2026/ulATAC/bams_Project_3969_pseudoreplicates_AOS_0.13/twogroup/comparison1/comparison1_diffacc_edgeR.tsv")
+
+# 2. Extract coordinates from peak_id and filter for significant up-peaks
+# True significant up-peaks are determined by FDR < 0.05
+coords_df <- df %>%
+  filter(FDR < 0.05) %>%
+  separate(
+    col = peak_id, 
+    into = c("chr", "start", "end"), 
+    sep = "\\|", 
+    convert = TRUE
+  ) %>%
+  # Ensure chromosomes are properly named (e.g., "chr9" or "chrJH584304.1")
+  mutate(chr = if_else(grepl("^chr", chr), chr, paste0("chr", chr)))
+
+# 3. Separate by group assignment and select just the coordinate columns
+# Group 1: Significant up-peaks in ctrl
+ctrl_up_peaks <- coords_df %>%
+  filter(logFC > 0) %>%
+  select(chr, start, end, logFC, FDR)
+
+# Group 2: Significant up-peaks in A485
+a485_up_peaks <- coords_df %>%
+  filter(logFC < 0) %>%
+  select(chr, start, end, logFC, FDR)
+
+# 4. Print summaries to console
+cat("Extracted", nrow(ctrl_up_peaks), "coordinates for ctrl group.\n")
+cat("Extracted", nrow(a485_up_peaks), "coordinates for A485 group.\n")
+
+# 5. Save the separated coordinates to files
+# Standard tab-separated summary files
+write_tsv(ctrl_up_peaks, "/data/jenuwein/erikson/2026/ulATAC/bams_Project_3969_pseudoreplicates_AOS_0.13/twogroup/comparison1/ctrl_up_peaks_coordinates.tsv")
+write_tsv(a485_up_peaks, "/data/jenuwein/erikson/2026/ulATAC/bams_Project_3969_pseudoreplicates_AOS_0.13/twogroup/comparison1/a485_up_peaks_coordinates.tsv")
+
+# Optional: Save in standard 3-column BED format for downstream tools (like IGV, MEME, or bedtools)
+write_tsv(ctrl_up_peaks %>% select(chr, start, end), "/data/jenuwein/erikson/2026/ulATAC/bams_Project_3969_pseudoreplicates_AOS_0.13/twogroup/comparison1/ctrl_up_peaks.bed", col_names = FALSE)
+write_tsv(a485_up_peaks %>% select(chr, start, end), "/data/jenuwein/erikson/2026/ulATAC/bams_Project_3969_pseudoreplicates_AOS_0.13/twogroup/comparison1/a485_up_peaks.bed", col_names = FALSE)
+
+```
+#Do some pathway analysis
+```{r}
+# Install required Bioconductor packages if you don't have them:
+# BiocManager::install(c("ChIPseeker", "clusterProfiler", "TxDb.Mmusculus.UCSC.mm10.knownGene", "org.Mm.eg.db"))
+
+library(readr)
+library(dplyr)
+library(tidyr)
+library(ChIPseeker)
+library(clusterProfiler)
+library(TxDb.Mmusculus.UCSC.mm10.knownGene)
+library(org.Mm.eg.db)
+
+# ==============================================================================
+# 1. READ DATA & CONVERT TO GENOMIC RANGES (GRanges)
+# ==============================================================================
+# Read the edgeR file
+df <- read_tsv("/data/jenuwein/erikson/2026/ulATAC/bams_Project_3969_pseudoreplicates_AOS_0.13/twogroup/comparison2/comparison2_diffacc_edgeR.tsv")
+
+# Separate peak_id coordinates and fix chromosome names
+processed_df <- df %>%
+  separate(col = peak_id, into = c("chr", "start", "end"), sep = "\\|", convert = TRUE) %>%
+  mutate(chr = if_else(grepl("^chr", chr), chr, paste0("chr", chr)))
+
+# Filter specifically for the significantly up-regulated peaks in A485
+# (FDR < 0.05 and logFC < 0 means more accessible/enriched in A485)
+a485_peaks_df <- processed_df %>%
+  filter(FDR < 0.05 & logFC < 0)
+
+# Convert the dataframe to a GRanges object required by ChIPseeker
+a485_granges <- GRanges(
+  seqnames = a485_peaks_df$chr,
+  ranges = IRanges(start = a485_peaks_df$start, end = a485_peaks_df$end),
+  logFC = a485_peaks_df$logFC,
+  FDR = a485_peaks_df$FDR
+)
+
+# ==============================================================================
+# 2. PEAK ANNOTATION (Finding Nearest Genes)
+# ==============================================================================
+# Load the genomic database (Change to hg38 for human)
+txdb <- TxDb.Mmusculus.UCSC.mm10.knownGene
+
+# Annotate peaks (assigns genomic feature like Promoter, Exon, Intron, Intergenic)
+# and calculates exact distance to the nearest Transcription Start Site (TSS)
+a485_annotated <- annotatePeak(
+  a485_granges, 
+  tssRegion = c(-3000, 3000), # Define promoter region window
+  TxDb = txdb, 
+  annoDb = "org.Mm.eg.db"       # Provides official gene symbols
+)
+
+# Convert annotation results back to a standard dataframe
+a485_anno_df <- as.data.frame(a485_annotated)
+
+# Save the full peak annotation report
+write_tsv(a485_anno_df, "/data/jenuwein/erikson/2026/ulATAC/bams_Project_3969_pseudoreplicates_AOS_0.13/twogroup/comparison2/A485_peaks_annotated_genes.tsv")
+
+# View a breakdown of genomic features (e.g., % in promoters vs intergenic)
+print(head(a485_anno_df[, c("seqnames", "start", "end", "annotation", "distanceToTSS", "SYMBOL")]))
+
+# Plot the distribution of features
+plotAnnoBar(a485_annotated)
+
+
+# ==============================================================================
+# 3. PATHWAY ENRICHMENT ANALYSIS (KEGG)
+# ==============================================================================
+# Extract unique Entrez Gene IDs associated with your A485 peaks
+# ClusterProfiler works best using numerical Entrez IDs
+target_genes <- unique(a485_anno_df$geneId)
+
+# Run KEGG Over-Representation Analysis
+# (Change organism = "hsa" if you are using human data)
+kegg_enrichment <- enrichKEGG(
+  gene          = target_genes,
+  organism      = "mmu", 
+  pvalueCutoff  = 0.05,
+  qvalueCutoff  = 0.2
+)
+
+# Translate Entrez IDs in the output pathways back to human-readable Gene Symbols
+kegg_enrichment <- setReadable(kegg_enrichment, OrgDb = org.Mm.eg.db, keyType = "ENTREZID")
+
+# Save pathway analysis results table
+write_tsv(as.data.frame(kegg_enrichment), "A485_kegg_pathways.tsv")
+
+# ==============================================================================
+# 4. VISUALIZE PATHWAY RESULTS
+# ==============================================================================
+# 1. Standard Dotplot: Shows enrichment score (GeneRatio) and significance (p.adjust)
+kegg_dotplot <- dotplot(kegg_enrichment, showCategory = 15) + 
+  ggtitle("KEGG Pathways - Enriched in A485")
+print(kegg_dotplot)
+
+# 2. Category-Gene Network Plot (cnetplot): Shows which specific genes belong to which pathway
+kegg_cnet <- cnetplot(kegg_enrichment, categorySize = "pvalue", foldChange = NULL, circular = FALSE) +
+  ggtitle("Gene-Pathway Network Mapping")
+print(kegg_cnet)
+```
+
+#Integrate with the RNAseq data
+```{r}
+# Ensure you have the necessary libraries installed:
+# BiocManager::install(c("ChIPseeker", "TxDb.Mmusculus.UCSC.mm10.knownGene", "org.Mm.eg.db"))
+# install.packages(c("tidyverse", "ggrepel"))
+
+library(readr)
+library(dplyr)
+library(tidyr)
+library(ChIPseeker)
+library(TxDb.Mmusculus.UCSC.mm10.knownGene)
+library(org.Mm.eg.db)
+library(ggplot2)
+library(ggrepel)
+
+# ==============================================================================
+# 1. LOAD AND ANNOTATE ATAC-SEQ PEAKS
+# ==============================================================================
+# Read in the ATAC-seq edgeR file provided previously
+atac_df <- read_tsv("/data/jenuwein/erikson/2026/ulATAC/bams_Project_3969_pseudoreplicates_AOS_0.13/twogroup/comparison1/comparison1_diffacc_edgeR.tsv")
+
+# Parse coordinates and standardize chromosome names
+atac_processed <- atac_df %>%
+  separate(col = peak_id, into = c("chr", "start", "end"), sep = "\\|", convert = TRUE) %>%
+  mutate(chr = if_else(grepl("^chr", chr), chr, paste0("chr", chr)))
+
+# Convert to GRanges object
+atac_granges <- GRanges(
+  seqnames = atac_processed$chr,
+  ranges = IRanges(start = atac_processed$start, end = atac_processed$end),
+  atac_logFC = atac_processed$logFC,
+  atac_FDR = atac_processed$FDR
+)
+
+# Annotate peaks with closest genes using mouse genome annotation (change to hg38 if human)
+txdb <- TxDb.Mmusculus.UCSC.mm10.knownGene
+atac_annotated <- annotatePeak(atac_granges, tssRegion = c(-3000, 3000), 
+                               TxDb = txdb, annoDb = "org.Mm.eg.db")
+
+# Convert back to data frame and keep relevant columns
+#atac_annotated_df <- as.data.frame(atac_annotated) %>%
+#  select(SYMBOL, atac_logFC, atac_FDR, distanceToTSS, annotation)
+atac_annotated_df <- as.data.frame(atac_annotated) %>%
+  dplyr::select(SYMBOL, atac_logFC, atac_FDR, distanceToTSS, annotation)
+
+# ==============================================================================
+# 2. LOAD DESEQ2 RNA-SEQ DATA AND INTEGRATE
+# ==============================================================================
+# Read in your DESeq2 output file
+# The first column with Ensembl IDs lacks a header string name in standard DESeq2 TSVs, 
+# but read_tsv handles this automatically or skips it if we don't explicitly select it.
+#rna_raw <- read_tsv("/data/jenuwein/erikson/2026/ulATAC/RNAseq/DESeq2_SampleSheet_RNAseq/DEseq_basic_DEresults.tsv") 
+
+deseq_col_names <- c("ensembl_id", "baseMean", "log2FoldChange", "lfcSE", 
+                     "stat", "pvalue", "padj", "Status", "external_gene_name")
+rna_raw <- read_tsv(
+  "/data/jenuwein/erikson/2026/ulATAC/RNAseq/DESeq2_SampleSheet_RNAseq/DEseq_basic_DEresults.tsv",
+  skip = 1, 
+  col_names = deseq_col_names
+)
+
+# Clean DESeq2 data and map to standardized column names
+rna_df <- rna_raw %>%
+  # Remove rows with NA values for statistics
+  filter(!is.na(padj) & !is.na(log2FoldChange)) %>% 
+  # Select and rename columns to standardize with the ATAC pipeline
+  dplyr::select(
+    SYMBOL = external_gene_name,
+    rna_logFC = log2FoldChange,
+    rna_FDR = padj
+  )
+
+# Verify the alignment fix
+print("Verified Cleaned RNA-Seq Data:")
+print(head(rna_df))
+
+# Preview the repaired data frame to make sure it looks right
+print("Repaired RNA Data Sample:")
+print(head(rna_df))
+# Merge the datasets by official Gene Symbol
+# We filter for peaks close to promoters/genes (e.g., within 5kb of TSS) to focus on direct regulation
+integrated_df <- inner_join(atac_annotated_df, rna_df, by = "SYMBOL") %>%
+  filter(abs(distanceToTSS) <= 5000)
+
+# Classify the integration groups for visualization thresholds (FDR < 0.05)
+integrated_df <- integrated_df %>%
+  mutate(Regulation = case_when(
+    atac_FDR < 0.05 & rna_FDR < 0.05 & atac_logFC > 0 & rna_logFC > 0 ~ "Co-upregulated (Open & Expressed)",
+    atac_FDR < 0.05 & rna_FDR < 0.05 & atac_logFC < 0 & rna_logFC < 0 ~ "Co-downregulated (Closed & Silenced)",
+    atac_FDR < 0.05 & rna_FDR < 0.05                                  ~ "Inverse Regulation",
+    TRUE                                                               ~ "Not Concordant / Not Sig"
+  ))
+
+# Save the integrated table
+write_tsv(integrated_df, "integrated_atac_rna_summary.tsv")
+
+# ==============================================================================
+# 3. VISUALIZATION: STARBURST PLOT
+# ==============================================================================
+# Color scheme matching biological context
+integration_colors <- c(
+  "Co-upregulated (Open & Expressed)"   = "#de2d26", # Red
+  "Co-downregulated (Closed & Silenced)" = "#3182bd", # Blue
+  "Inverse Regulation"                   = "#74c476", # Green
+  "Not Concordant / Not Sig"             = "#d9d9d9"  # Muted gray
+)
+
+starburst_plot <- ggplot(integrated_df, aes(x = atac_logFC, y = rna_logFC)) +
+  # Plot non-significant/non-concordant markers in background
+  geom_point(data = filter(integrated_df, Regulation == "Not Concordant / Not Sig"), 
+             alpha = 0.3, size = 1, color = "#d9d9d9") +
+  # Overlay significant, multi-omic hits
+  geom_point(data = filter(integrated_df, Regulation != "Not Concordant / Not Sig"), 
+             aes(color = Regulation), alpha = 0.8, size = 2) +
+  
+  # Add crosshair lines at 0
+  geom_vline(xintercept = 0, linetype = "dashed", color = "black", alpha = 0.5) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "black", alpha = 0.5) +
+  
+  # Dynamically label top multi-omic genes (highest fold changes)
+  geom_text_repel(
+    data = filter(integrated_df, Regulation != "Not Concordant / Not Sig" & 
+                   (abs(atac_logFC) > 1 | abs(rna_logFC) > 1)),
+    aes(label = SYMBOL),
+    size = 3.5,
+    max.overlaps = 15,
+    fontface = "bold",
+    box.padding = 0.3
+  ) +
+  
+  scale_color_manual(values = integration_colors) +
+  labs(
+    title = "Multi-Omic Integration: ATAC-seq vs. RNA-seq",
+    subtitle = "Peaks restricted within 5kb of target Gene TSS",
+    x = "Chromatin Accessibility Change (ATAC-seq logFC)",
+    y = "Gene Expression Change (DESeq2 log2FoldChange)",
+    color = "Integration Status"
+  ) +
+  theme_minimal(base_size = 14) +
+  theme(
+    panel.grid.minor = element_blank(),
+    legend.position = "bottom",
+    legend.box = "vertical",
+    plot.title = element_text(face = "bold")
+  )
+
+print(starburst_plot)
+
+# Save high-res plot
+# ggsave("atac_rna_starburst_plot.png", plot = starburst_plot, width = 8, height = 8, dpi = 300)
+```
+#Get some numbers
+
+```{r}
+
+library(readr)
+library(dplyr)
+library(tidyr)
+library(ChIPseeker)
+library(TxDb.Mmusculus.UCSC.mm10.knownGene)
+library(org.Mm.eg.db)
+library(ggplot2)
+library(ggrepel)
+
+# ==============================================================================
+# 1. LOAD AND ANNOTATE ATAC-SEQ PEAKS
+# ==============================================================================
+atac_df <- read_tsv("/data/jenuwein/erikson/2026/ulATAC/bams_Project_3969_pseudoreplicates_AOS_0.13/twogroup/comparison2/comparison2_diffacc_edgeR.tsv")
+
+atac_processed <- atac_df %>%
+  separate(col = peak_id, into = c("chr", "start", "end"), sep = "\\|", convert = TRUE) %>%
+  mutate(chr = if_else(grepl("^chr", chr), chr, paste0("chr", chr)))
+
+atac_granges <- GRanges(
+  seqnames = atac_processed$chr,
+  ranges = IRanges(start = atac_processed$start, end = atac_processed$end),
+  atac_logFC = atac_processed$logFC,
+  atac_FDR = atac_processed$FDR
+)
+
+txdb <- TxDb.Mmusculus.UCSC.mm10.knownGene
+atac_annotated <- annotatePeak(atac_granges, tssRegion = c(-3000, 3000), 
+                               TxDb = txdb, annoDb = "org.Mm.eg.db")
+
+atac_annotated_df <- as.data.frame(atac_annotated) %>%
+  dplyr::select(SYMBOL, atac_logFC, atac_FDR, distanceToTSS, annotation)
+
+# ==============================================================================
+# 2. LOAD DESEQ2 RNA-SEQ DATA AND INTEGRATE
+# ==============================================================================
+deseq_col_names <- c("ensembl_id", "baseMean", "log2FoldChange", "lfcSE", 
+                     "stat", "pvalue", "padj", "Status", "external_gene_name")
+rna_raw <- read_tsv(
+  "/data/jenuwein/erikson/2026/ulATAC/RNAseq/v1_DESeq2_SampleSheet_RNAseq/DEseq_basic_DEresults.tsv",
+  skip = 1, 
+  col_names = deseq_col_names
+)
+
+rna_df <- rna_raw %>%
+  filter(!is.na(padj) & !is.na(log2FoldChange)) %>% 
+  dplyr::select(
+    SYMBOL = external_gene_name,
+    rna_logFC = log2FoldChange,
+    rna_FDR = padj
+  )
+
+# Merge datasets by official Gene Symbol and filter for proximal promoter/TSS hits (<= 5kb)
+integrated_df <- inner_join(atac_annotated_df, rna_df, by = "SYMBOL") %>%
+  filter(abs(distanceToTSS) <= 5000)
+
+# Step A: Initially assign the baseline statuses
+integrated_df <- integrated_df %>%
+  mutate(Status_Base = case_when(
+    atac_FDR < 0.05 & rna_FDR < 0.05 & atac_logFC > 0 & rna_logFC > 0 ~ "Co-upregulated (Open & Expressed)",
+    atac_FDR < 0.05 & rna_FDR < 0.05 & atac_logFC < 0 & rna_logFC < 0 ~ "Co-downregulated (Closed & Silenced)",
+    atac_FDR < 0.05 & rna_FDR < 0.05                                  ~ "Inverse Regulation",
+    TRUE                                                               ~ "Not Concordant / Not Sig"
+  ))
+
+# Step B: Compute the unique counts for each category safely
+counts <- table(integrated_df$Status_Base)
+
+# Step C: Generate text labels containing the parenthetical count values
+# (Using dynamic lookup to default to 0 if a group happens to have no elements)
+get_count <- function(name) if (name %in% names(counts)) counts[name] else 0
+
+label_coup   <- paste0("Co-upregulated (Open & Expressed) (", get_count("Co-upregulated (Open & Expressed)"), ")")
+label_codown <- paste0("Co-downregulated (Closed & Silenced) (", get_count("Co-downregulated (Closed & Silenced)"), ")")
+label_inv    <- paste0("Inverse Regulation (", get_count("Inverse Regulation"), ")")
+label_nosig  <- paste0("Not Concordant / Not Sig (", get_count("Not Concordant / Not Sig"), ")")
+
+# Step D: Apply the finalized text strings with counts into a new variable column
+integrated_df <- integrated_df %>%
+  mutate(Regulation_Label = case_when(
+    Status_Base == "Co-upregulated (Open & Expressed)"   ~ label_coup,
+    Status_Base == "Co-downregulated (Closed & Silenced)" ~ label_codown,
+    Status_Base == "Inverse Regulation"                   ~ label_inv,
+    TRUE                                                   ~ label_nosig
+  ))
+
+# Save the updated table summary
+write_tsv(integrated_df, "integrated_atac_rna_summary.tsv")
+
+
+# ==============================================================================
+# 3. VISUALIZATION: STARBURST PLOT WITH DYNAMIC LABELS
+# ==============================================================================
+# Build custom hex color palettes mapped exactly to the explicit new text labels
+integration_colors <- c(
+  "#74c476", # Green
+  "#3182bd", # Blue
+  "#de2d26", # Red
+  "#d9d9d9"  # Muted light gray
+)
+names(integration_colors) <- c(label_coup, label_codown, label_inv, label_nosig)
+
+starburst_plot <- ggplot(integrated_df, aes(x = atac_logFC, y = rna_logFC)) +
+  # 1. Render non-significant/non-concordant background points first
+  geom_point(data = filter(integrated_df, Status_Base == "Not Concordant / Not Sig"), 
+             alpha = 0.3, size = 1, color = "#d9d9d9") +
+  # 2. Overlay significant integrated multi-omic targets on top
+  geom_point(data = filter(integrated_df, Status_Base != "Not Concordant / Not Sig"), 
+             aes(color = Regulation_Label), alpha = 0.8, size = 2) +
+  
+  # Crosshair lines at 0 coordinates
+  geom_vline(xintercept = 0, linetype = "dashed", color = "black", alpha = 0.5) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "black", alpha = 0.5) +
+  
+  # Label top multi-omic genes (highest fold shifts)
+  geom_text_repel(
+    data = filter(integrated_df, Status_Base != "Not Concordant / Not Sig" & 
+                   (abs(atac_logFC) > 1 | abs(rna_logFC) > 1)),
+    aes(label = SYMBOL),
+    size = 3.5,
+    max.overlaps = 15,
+    fontface = "bold",
+    box.padding = 0.3
+  ) +
+  
+  scale_color_manual(values = integration_colors) +
+  labs(
+    title = "ATAC-seq vs. RNA-seq",
+    subtitle = "Peaks restricted within 5kb of target Gene TSS",
+    x = "Chromatin Accessibility Change (ATAC-seq logFC)",
+    y = "Gene Expression Change (DESeq2 log2FoldChange)",
+    color = "Integration Status"
+  ) +
+  theme_minimal(base_size = 14) +
+  theme(
+    panel.grid.minor = element_blank(),
+    legend.position = "bottom",
+    legend.box = "vertical",
+    plot.title = element_text(face = "bold")
+  )
+
+print(starburst_plot)
+
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
