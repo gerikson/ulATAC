@@ -1,0 +1,304 @@
+---
+title: "PCA_ATAC_mergedBatches"
+author: "Galina Erikson"
+date: "2026-06-24"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r cars}
+library(ggplot2)
+library(dplyr)
+library(readr)
+
+# 1. Read in the edgeR output file
+df <- read_tsv("/data/jenuwein/erikson/2026/ulATAC/bams_Project_3969_plus_project_3983_presudoreplicates_AOS_0.13/twogroup/comparison2/comparison2_diffacc_edgeR.tsv")
+
+# 2. Define significance status based on FDR threshold (< 0.05)
+df <- df %>%
+  mutate(Status = case_when(
+    FDR < 0.05 & logFC > 0 ~ "Enriched in A485",
+    FDR < 0.05 & logFC < 0 ~ "Enriched in ctrl",
+    TRUE                   ~ "Not Significant"
+  ))
+
+# 3. Dynamically count the number of peaks in each group for the labels
+counts <- table(df$Status)
+label_ctrl  <- paste0("Enriched in ctrl (", counts["Enriched in ctrl"], ")")
+label_a485  <- paste0("Enriched in A485 (", counts["Enriched in A485"], ")")
+label_nosig <- paste0("Not Significant (", counts["Not Significant"], ")")
+
+# 4. Define the color palette mapping directly to the new dynamic labels
+group_colors <- c(
+  "Enriched in ctrl" = "#de2d26",   # Red
+  "Enriched in A485" = "#3182bd",   # Blue
+  "Not Significant"  = "#d9d9d9"    # Muted light gray
+)
+
+# Replace status strings with the ones containing parenthetical counts
+df <- df %>%
+  mutate(Status_Label = case_when(
+    Status == "Enriched in ctrl" ~ label_ctrl,
+    Status == "Enriched in A485" ~ label_a485,
+    TRUE                         ~ label_nosig
+  ))
+
+# Create a named vector for the scale mapping using the exact label strings
+color_labels <- c(group_colors["Enriched in ctrl"], 
+                  group_colors["Enriched in A485"], 
+                  group_colors["Not Significant"])
+names(color_labels) <- c(label_ctrl, label_a485, label_nosig)
+
+
+# ==========================================
+# Plot 1: Corrected MA Plot with Dynamic Labels
+# ==========================================
+ma_plot <- ggplot(df, aes(x = logCPM, y = logFC, color = Status_Label)) +
+  # Render non-significant background points first
+  geom_point(data = filter(df, Status == "Not Significant"), alpha = 0.4, size = 0.8) +
+  # Overlay the significant points on top
+  geom_point(data = filter(df, Status != "Not Significant"), alpha = 0.9, size = 1.5) +
+  
+  # Reference line at y = 0
+  geom_hline(yintercept = 0, linetype = "dashed", color = "black", size = 0.5) +
+  
+  scale_color_manual(values = color_labels) +
+  labs(
+    title = "Differential Chromatin Accessibility",
+    subtitle = "Statistical Significance Threshold: FDR < 0.05",
+    x = "Average Abundance (logCPM)",
+    y = "Log2 Fold Change (logFC)",
+    color = "Significance Status"
+  ) +
+  theme_minimal(base_size = 14) +
+  theme(
+    panel.grid.minor = element_blank(),
+    plot.title = element_text(face = "bold"),
+    legend.position = "right"
+  )
+
+print(ma_plot)
+
+
+# ==========================================
+# Plot 2: Bar Chart of Enriched Counts with Dynamic Labels
+# ==========================================
+# Filter out non-significant peaks for the bar chart
+count_data <- df %>%
+  filter(Status != "Not Significant") %>%
+  count(Status_Label)
+
+bar_plot <- ggplot(count_data, aes(x = Status_Label, y = n, fill = Status_Label)) +
+  geom_bar(stat = "identity", width = 0.5, color = "black", size = 0.3) +
+  geom_text(aes(label = n), vjust = -0.5, fontface = "bold", size = 5) +
+  
+  scale_fill_manual(values = color_labels) +
+  labs(
+    title = "Number of Significantly Enriched Peaks",
+    subtitle = "Threshold: FDR < 0.05",
+    x = "Experimental Group",
+    y = "Peak Count"
+  ) +
+  theme_minimal(base_size = 14) +
+  theme(
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor = element_blank(),
+    plot.title = element_text(face = "bold"),
+    legend.position = "none"
+  ) +
+  ylim(0, max(count_data$n) * 1.15)
+
+print(bar_plot)
+```
+# do it with the 2 batches
+#erikson@deep22:/data/jenuwein/erikson/2026/ulATAC/bams_Project_3969_plus_project_3983_AOS13/peakset$ plotPCA --corData counts.bw.npz -o PCA.png --transpose --ntop 5000 --outFileNameData PCAeigenvalue.tab
+#color it by batches
+```{r pressure, echo=FALSE}
+
+```
+
+```{r pressure, echo=FALSE}
+pca <- read.table("/data/jenuwein/erikson/2026/ulATAC/bams_Project_3969_plus_project_3983_AOS13/peakset/PCAeigenvalue.tab", 
+                  header = TRUE, row.names = 1)
+
+# 2. Transpose and clean up rows
+pca_t <- as.data.frame(t(pca))
+pca_t <- pca_t[rownames(pca_t) != "Eigenvalue", ]
+
+# 3. Create the batch variable 
+# grepl returns TRUE if "batch1" is found, FALSE otherwise
+pca_t$batch <- ifelse(grepl("batch1", rownames(pca_t)), "Project_3969", "Project_3983")
+pca_t$batch <- factor(pca_t$batch, levels = c("Project_3969", "Project_3983"))
+
+# 4. Map PC coordinates
+pca_t$PC1 <- as.numeric(pca_t[,1])
+pca_t$PC2 <- as.numeric(pca_t[,2])
+
+# 5. Plot using the new batch variable for color
+p <- ggplot(pca_t, aes(x = PC1, y = PC2, color = batch)) +
+  geom_point(size = 3, alpha = 0.8) +
+  scale_color_manual(values = c(
+    "Project_3969" = "red",
+    "Project_3983" = "green"
+  )) +
+  labs(color = "Batch Status", x = "PC1", y = "PC2") +
+  theme_classic()
+
+p
+
+```
+
+#Comparing ATACseq with RNAseq
+```{r pressure, echo=FALSE}
+library(readr)
+library(dplyr)
+library(tidyr)
+library(ChIPseeker)
+library(TxDb.Mmusculus.UCSC.mm10.knownGene)
+library(org.Mm.eg.db)
+library(ggplot2)
+library(ggrepel)
+
+# ==============================================================================
+# 1. LOAD AND ANNOTATE ATAC-SEQ PEAKS
+# ==============================================================================
+atac_df <- read_tsv("/data/jenuwein/erikson/2026/ulATAC/bams_Project_3969_plus_project_3983_presudoreplicates_AOS_0.13/twogroup/comparison2/comparison2_diffacc_edgeR.tsv")
+
+atac_processed <- atac_df %>%
+  separate(col = peak_id, into = c("chr", "start", "end"), sep = "\\|", convert = TRUE) %>%
+  mutate(chr = if_else(grepl("^chr", chr), chr, paste0("chr", chr)))
+
+atac_granges <- GRanges(
+  seqnames = atac_processed$chr,
+  ranges = IRanges(start = atac_processed$start, end = atac_processed$end),
+  atac_logFC = atac_processed$logFC,
+  atac_FDR = atac_processed$FDR
+)
+
+txdb <- TxDb.Mmusculus.UCSC.mm10.knownGene
+atac_annotated <- annotatePeak(atac_granges, tssRegion = c(-3000, 3000), 
+                               TxDb = txdb, annoDb = "org.Mm.eg.db")
+
+atac_annotated_df <- as.data.frame(atac_annotated) %>%
+  dplyr::select(SYMBOL, atac_logFC, atac_FDR, distanceToTSS, annotation)
+
+# ==============================================================================
+# 2. LOAD DESEQ2 RNA-SEQ DATA AND INTEGRATE
+# ==============================================================================
+deseq_col_names <- c("ensembl_id", "baseMean", "log2FoldChange", "lfcSE", 
+                     "stat", "pvalue", "padj", "Status", "external_gene_name")
+rna_raw <- read_tsv(
+  "/data/jenuwein/erikson/2026/ulATAC/RNA_pseudoreps_analysis/DESeq2_SampleSheet_RNAseq_preudoreps/DEseq_basic_DEresults.tsv",
+  skip = 1, 
+  col_names = deseq_col_names
+)
+
+rna_df <- rna_raw %>%
+  filter(!is.na(padj) & !is.na(log2FoldChange)) %>% 
+  dplyr::select(
+    SYMBOL = external_gene_name,
+    rna_logFC = log2FoldChange,
+    rna_FDR = padj
+  )
+
+# Merge datasets by official Gene Symbol and filter for proximal promoter/TSS hits (<= 5kb)
+integrated_df <- inner_join(atac_annotated_df, rna_df, by = "SYMBOL") %>%
+  filter(abs(distanceToTSS) <= 10000)
+
+# Step A: Initially assign the baseline statuses
+integrated_df <- integrated_df %>%
+  mutate(Status_Base = case_when(
+    atac_FDR < 0.05 & rna_FDR < 0.05 & atac_logFC > 0 & rna_logFC > 0 ~ "Co-upregulated (Open & Expressed)",
+    atac_FDR < 0.05 & rna_FDR < 0.05 & atac_logFC < 0 & rna_logFC < 0 ~ "Co-downregulated (Closed & Silenced)",
+    atac_FDR < 0.05 & rna_FDR < 0.05                                  ~ "Inverse Regulation",
+    TRUE                                                               ~ "Not Concordant / Not Sig"
+  ))
+
+# Step B: Compute the unique counts for each category safely
+counts <- table(integrated_df$Status_Base)
+
+# Step C: Generate text labels containing the parenthetical count values
+# (Using dynamic lookup to default to 0 if a group happens to have no elements)
+get_count <- function(name) if (name %in% names(counts)) counts[name] else 0
+
+label_coup   <- paste0("Co-upregulated (Open & Expressed) (", get_count("Co-upregulated (Open & Expressed)"), ")")
+label_codown <- paste0("Co-downregulated (Closed & Silenced) (", get_count("Co-downregulated (Closed & Silenced)"), ")")
+label_inv    <- paste0("Inverse Regulation (", get_count("Inverse Regulation"), ")")
+label_nosig  <- paste0("Not Concordant / Not Sig (", get_count("Not Concordant / Not Sig"), ")")
+
+# Step D: Apply the finalized text strings with counts into a new variable column
+integrated_df <- integrated_df %>%
+  mutate(Regulation_Label = case_when(
+    Status_Base == "Co-upregulated (Open & Expressed)"   ~ label_coup,
+    Status_Base == "Co-downregulated (Closed & Silenced)" ~ label_codown,
+    Status_Base == "Inverse Regulation"                   ~ label_inv,
+    TRUE                                                   ~ label_nosig
+  ))
+
+# Save the updated table summary
+write_tsv(integrated_df, "integrated_atac_rna_summary.tsv")
+
+
+# ==============================================================================
+# 3. VISUALIZATION: STARBURST PLOT WITH DYNAMIC LABELS
+# ==============================================================================
+# Build custom hex color palettes mapped exactly to the explicit new text labels
+integration_colors <- c(
+  "#74c476", # Green
+  "#3182bd", # Blue
+  "#de2d26", # Red
+  "#d9d9d9"  # Muted light gray
+)
+names(integration_colors) <- c(label_coup, label_codown, label_inv, label_nosig)
+
+starburst_plot <- ggplot(integrated_df, aes(x = atac_logFC, y = rna_logFC)) +
+  # 1. Render non-significant/non-concordant background points first
+  geom_point(data = filter(integrated_df, Status_Base == "Not Concordant / Not Sig"), 
+             alpha = 0.3, size = 1, color = "#d9d9d9") +
+  # 2. Overlay significant integrated multi-omic targets on top
+  geom_point(data = filter(integrated_df, Status_Base != "Not Concordant / Not Sig"), 
+             aes(color = Regulation_Label), alpha = 0.8, size = 2) +
+  
+  # Crosshair lines at 0 coordinates
+  geom_vline(xintercept = 0, linetype = "dashed", color = "black", alpha = 0.5) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "black", alpha = 0.5) +
+  
+  # Label top multi-omic genes (highest fold shifts)
+  geom_text_repel(
+    data = filter(integrated_df, Status_Base != "Not Concordant / Not Sig" & 
+                   (abs(atac_logFC) > 1 | abs(rna_logFC) > 1)),
+    aes(label = SYMBOL),
+    size = 3.5,
+    max.overlaps = 15,
+    fontface = "bold",
+    box.padding = 0.3
+  ) +
+  
+  scale_color_manual(values = integration_colors) +
+  labs(
+    title = "ATAC-seq vs. RNA-seq",
+    subtitle = "Peaks restricted within 10kb of target Gene TSS",
+    x = "Chromatin Accessibility Change (ATAC-seq logFC)",
+    y = "Gene Expression Change (DESeq2 log2FoldChange)",
+    color = "Integration Status"
+  ) +
+  theme_minimal(base_size = 14) +
+  theme(
+    panel.grid.minor = element_blank(),
+    legend.position = "bottom",
+    legend.box = "vertical",
+    plot.title = element_text(face = "bold")
+  )
+
+print(starburst_plot)
+```
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
