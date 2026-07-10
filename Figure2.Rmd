@@ -1,0 +1,497 @@
+---
+title: "Figure2"
+author: "Galina Erikson"
+date: "2026-06-30"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+# Load required libraries
+library(ggplot2)
+library(dplyr)
+
+# 1. Prepare the dataset
+df <- data.frame(
+  Sample = c(
+    "HepG2_10_ulATACv2_rep1", "HepG2_10_ulATACv2_rep2",
+    "HepG2_100_ulATACv2_rep1", "HepG2_100_ulATACv2_rep2",
+    "HepG2_1000_ulATACv2_rep1", "HepG2_1000_ulATACv2_rep2",
+    "HepG2_5000_ulATACv2_rep1", "HepG2_5000_ulATACv2_rep2",
+    "HepG2_5000_ulATACv2_noMix"
+  ),
+  Peaks = c(85, 86, 5350, 6486, 16137, 18291, 32969, 40349, 53151),
+  Condition = c("10", "10", "100", "100", "1000", "1000", "5000", "5000", "5000"),
+  Replicate = c("Rep 1", "Rep 2", "Rep 1", "Rep 2", "Rep 1", "Rep 2", "Rep 1", "Rep 2", "noMix")
+)
+
+# 2. Enforce the X-axis order (10 to 5000)
+df$Condition <- factor(df$Condition, levels = c("10", "100", "1000", "5000"))
+
+# CRITICAL FIX: Explicitly order Replicate so 'noMix' is plotted last
+df$Replicate <- factor(df$Replicate, levels = c("Rep 1", "Rep 2", "noMix"))
+
+# 3. Create the grouped barplot
+ggplot(df, aes(x = Condition, y = Peaks, fill = Replicate)) +
+  geom_bar(stat = "identity", position = position_dodge(width = 0.8), color = "black", width = 0.7) +
+  # Add value labels (position_dodge width must match geom_bar perfectly to align)
+  geom_text(aes(label = scales::comma(Peaks)), 
+            position = position_dodge(width = 0.8), 
+            vjust = -0.5, 
+            size = 3.5, 
+            fontface = "bold") +
+  theme_classic(base_size = 14) +
+  scale_fill_viridis_d(option = "D", end = 0.85) + 
+  scale_y_continuous(labels = scales::comma, expand = expansion(mult = c(0, 0.1))) +
+  labs(
+    title = "HepG2 ulATACseq Peak Counts",
+    x = "Cell number",
+    y = "Number of Narrow Peaks",
+    fill = "Replicate"
+  ) +
+  theme(
+    plot.title = element_text(face = "bold", hjust = 0.5, size = 16),
+    axis.title = element_text(face = "bold"),
+    legend.title = element_text(face = "bold"),
+    panel.grid.major.y = element_line(color = "grey90", size = 0.5)
+  )
+
+```
+
+
+#EL4
+
+```{r pressure, echo=FALSE}
+library(ggplot2)
+library(dplyr)
+
+# 1. Prepare the EL4 dataset
+df <- data.frame(
+  Sample = c(
+    "EL4_10_ulATACv2_rep1", "EL4_10_ulATACv2_rep2",
+    "EL4_100_ulATACv2_rep1", "EL4_100_ulATACv2_rep2",
+    "EL4_1000_ulATACv2_rep1", "EL4_1000_ulATACv2_rep2",
+    "EL4_5000_ulATACv2_rep1", "EL4_5000_ulATACv2_rep2",
+    "EL4_5000_ulATACv2_noMix"
+  ),
+  Peaks = c(678, 246, 3845, 2286, 5064, 3829, 28912, 29355, 19814),
+  Condition = c("10", "10", "100", "100", "1000", "1000", "5000", "5000", "5000"),
+  Replicate = c("Rep 1", "Rep 2", "Rep 1", "Rep 2", "Rep 1", "Rep 2", "Rep 1", "Rep 2", "noMix")
+)
+
+# 2. Enforce the X-axis cell input order
+df$Condition <- factor(df$Condition, levels = c("10", "100", "1000", "5000"))
+
+# 3. Enforce the Replicate order so 'noMix' is plotted last
+df$Replicate <- factor(df$Replicate, levels = c("Rep 1", "Rep 2", "noMix"))
+
+# 4. Create the grouped barplot
+ggplot(df, aes(x = Condition, y = Peaks, fill = Replicate)) +
+  geom_bar(stat = "identity", position = position_dodge(width = 0.8), color = "black", width = 0.7) +
+  # Add perfectly aligned text labels over the bars
+  geom_text(aes(label = scales::comma(Peaks)), 
+            position = position_dodge(width = 0.8), 
+            vjust = -0.5, 
+            size = 3.5, 
+            fontface = "bold") +
+  theme_classic(base_size = 14) +
+  scale_fill_viridis_d(option = "D", end = 0.85) + 
+  scale_y_continuous(labels = scales::comma, expand = expansion(mult = c(0, 0.1))) +
+  labs(
+    title = "EL4 ulATACseq Peak Counts",
+    x = "Cell number",
+    y = "Number of Narrow Peaks",
+    fill = "Replicate"
+  ) +
+  theme(
+    plot.title = element_text(face = "bold", hjust = 0.5, size = 16),
+    axis.title = element_text(face = "bold"),
+    legend.title = element_text(face = "bold"),
+    panel.grid.major.y = element_line(color = "grey90", size = 0.5)
+  )
+```
+
+#PCA
+```{r pressure, echo=FALSE}
+library(ggplot2)
+
+# 1. Transpose the data so samples are rows and PCs are columns
+# (Assuming your input dataframe is named 'pca_raw')
+
+pca <- read.table(
+  "/data/jenuwein/erikson/2026/ulATAC/Project_3925/m39_AOS/bw/Eingenvectors.tab",
+  header = TRUE,
+  row.names = 1
+)
+
+# Extract eigenvalues
+eig <- as.numeric(pca$Eigenvalue)
+var_explained <- eig/sum(eig) * 100
+
+# Transpose and remove Eigenvalue row
+pca_t <- as.data.frame(t(pca))
+pca_t <- pca_t[rownames(pca_t) != "Eigenvalue", ]
+
+#pca_t <- as.data.frame(t(pca[, 2:10])) # Exclude 'Component' and 'Eigenvalue' columns
+colnames(pca_t) <- c("PC1", "PC2", "PC3")  # Name the columns based on the rows
+
+# 2. Extract conditions from the new sample names (row names)
+pca_t$condition <- case_when(
+  grepl("_10_", rownames(pca_t)) ~ "10",
+  grepl("_100_", rownames(pca_t)) ~ "100",
+  grepl("_1000_", rownames(pca_t)) ~ "1000",
+  grepl("_5000_", rownames(pca_t)) & !grepl("noMix", rownames(pca_t)) ~ "5000",
+  grepl("noMix", rownames(pca_t)) ~ "Mix",
+  TRUE ~ NA_character_
+)
+
+# Set the discrete factor levels for clean ordering in the legend
+pca_t$condition <- factor(
+  pca_t$condition,
+  levels = c("10", "100", "1000", "5000", "Mix")
+)
+
+# 3. Ensure PC coordinates are numeric
+pca_t$PC1 <- as.numeric(pca_t$PC1)
+pca_t$PC2 <- as.numeric(pca_t$PC2)
+
+# 4. Calculate variance explained using the 'Eigenvalue' column from your raw data
+# (PC variance / total variance)
+
+eig <- as.numeric(pca$Eigenvalue)
+var_explained <- eig/sum(eig) * 100
+
+# 5. Plot with custom colors for each of the 5 groups
+p <- ggplot(pca_t, aes(x = PC1, y = PC2, color = condition)) +
+  geom_point(size = 4, alpha = 0.8) +
+  scale_color_manual(values = c(
+    "10"    = "#E41A1C", # Red
+    "100"   = "#377EB8", # Blue
+    "1000"  = "#4DAF4A", # Green
+    "5000"  = "#984EA3", # Purple
+    "Mix"   = "#FF7F00"  # Orange
+  )) +
+  labs(
+    color = "Condition",
+    x = sprintf("PC1 (%.1f%%)", var_explained[1]),
+    y = sprintf("PC2 (%.1f%%)", var_explained[2])
+  ) +
+  theme_classic()
+
+print(p)
+
+# 1. Preferred Option: PDF (Vector format, perfect for publication text/plots)
+ggsave(
+  filename = "Fig2.panelB.pca.pdf",
+  plot = p,
+  device = "pdf",
+  width = 6,          # Width in inches
+  height = 5,         # Height in inches
+  units = "in"
+)
+
+ggsave(
+  filename = "Fig2.panelB.pca.png",
+  plot = p,
+  device = "png",
+  width = 6,
+  height = 5,
+  units = "in",
+  dpi = 300           # High resolution requirement
+)
+
+
+```
+
+#PCA
+```{r pressure, echo=FALSE}
+library(ggplot2)
+
+# 1. Transpose the data so samples are rows and PCs are columns
+# (Assuming your input dataframe is named 'pca_raw')
+
+pca <- read.table(
+  "/data/jenuwein/erikson/2026/ulATAC/Project_3925/m39_AOS/bw/Eingenvectors.tab",
+  header = TRUE,
+  row.names = 1
+)
+
+# Extract eigenvalues
+eig <- as.numeric(pca$Eigenvalue)
+var_explained <- eig/sum(eig) * 100
+
+# Transpose and remove Eigenvalue row
+pca_t <- as.data.frame(t(pca))
+pca_t <- pca_t[rownames(pca_t) != "Eigenvalue", ]
+
+#pca_t <- as.data.frame(t(pca[, 2:10])) # Exclude 'Component' and 'Eigenvalue' columns
+colnames(pca_t) <- c("PC1", "PC2", "PC3")  # Name the columns based on the rows
+
+# 2. Extract conditions from the new sample names (row names)
+pca_t$condition <- case_when(
+  grepl("_10_", rownames(pca_t)) ~ "10",
+  grepl("_100_", rownames(pca_t)) ~ "100",
+  grepl("_1000_", rownames(pca_t)) ~ "1000",
+  grepl("_5000_", rownames(pca_t)) & !grepl("noMix", rownames(pca_t)) ~ "5000",
+  grepl("noMix", rownames(pca_t)) ~ "Mix",
+  TRUE ~ NA_character_
+)
+
+# Set the discrete factor levels for clean ordering in the legend
+pca_t$condition <- factor(
+  pca_t$condition,
+  levels = c("10", "100", "1000", "5000", "Mix")
+)
+
+# 3. Ensure PC coordinates are numeric
+pca_t$PC1 <- as.numeric(pca_t$PC1)
+pca_t$PC2 <- as.numeric(pca_t$PC2)
+
+# 4. Calculate variance explained using the 'Eigenvalue' column from your raw data
+# (PC variance / total variance)
+
+eig <- as.numeric(pca$Eigenvalue)
+var_explained <- eig/sum(eig) * 100
+
+p <- ggplot(pca_t, aes(x = PC1, y = PC2, color = condition)) +
+  geom_point(size = 4, alpha = 0.8) +
+
+  scale_color_manual(values = c(
+    "10"    = "#E41A1C",
+    "100"   = "#377EB8",
+    "1000"  = "#4DAF4A",
+    "5000"  = "#984EA3",
+    "Mix"   = "#FF7F00"
+  )) +
+
+  labs(
+    title = "EL4 ulATACseq PCA",
+    color = "Condition",
+    x = sprintf("PC1 (%.1f%%)", var_explained[1]),
+    y = sprintf("PC2 (%.1f%%)", var_explained[2])
+  ) +
+
+  theme_classic(base_size = 14) +
+
+  theme(
+    plot.title = element_text(
+      face = "bold",
+      hjust = 0.5,
+      size = 16
+    ),
+    axis.title = element_text(
+      face = "bold"
+    ),
+    axis.text = element_text(
+      size = 12
+    ),
+    legend.title = element_text(
+      face = "bold"
+    ),
+    legend.text = element_text(
+      size = 12
+    ),
+    panel.grid.major.y = element_line(
+      color = "grey90",
+      size = 0.5
+    )
+  )
+
+print(p)
+```
+
+#Ploting the HepG2 data as well
+```{r pressure, echo=FALSE}
+library(ggplot2)
+
+# 1. Transpose the data so samples are rows and PCs are columns
+# (Assuming your input dataframe is named 'pca_raw')
+
+pca <- read.table(
+  "/data/jenuwein/erikson/2026/ulATAC/Project_3925/hg38_AOS/peakset/PCAeigenvalue.tab",
+  header = TRUE,
+  row.names = 1
+)
+
+samples_to_remove <- c(
+  "HepG2_5000_ulATACv1_rep1.filtered.scalefac.bw", 
+  "HepG2_5000_ulATACv1_rep2.filtered.scalefac.bw"
+)
+pca <- pca[, !(colnames(pca) %in% samples_to_remove)]
+
+# Extract eigenvalues
+eig <- as.numeric(pca$Eigenvalue)
+var_explained <- eig/sum(eig) * 100
+
+# Transpose and remove Eigenvalue row
+pca_t <- as.data.frame(t(pca))
+pca_t <- pca_t[rownames(pca_t) != "Eigenvalue", ]
+
+#pca_t <- as.data.frame(t(pca[, 2:10])) # Exclude 'Component' and 'Eigenvalue' columns
+colnames(pca_t) <- c("PC1", "PC2", "PC3")  # Name the columns based on the rows
+
+# 2. Extract conditions from the new sample names (row names)
+pca_t$condition <- case_when(
+  grepl("_10_", rownames(pca_t)) ~ "10",
+  grepl("_100_", rownames(pca_t)) ~ "100",
+  grepl("_1000_", rownames(pca_t)) ~ "1000",
+  grepl("_5000_", rownames(pca_t)) & !grepl("noMix", rownames(pca_t)) ~ "5000",
+  grepl("noMix", rownames(pca_t)) ~ "Mix",
+  TRUE ~ NA_character_
+)
+
+# Set the discrete factor levels for clean ordering in the legend
+pca_t$condition <- factor(
+  pca_t$condition,
+  levels = c("10", "100", "1000", "5000", "Mix")
+)
+
+# 3. Ensure PC coordinates are numeric
+pca_t$PC1 <- as.numeric(pca_t$PC1)
+pca_t$PC2 <- as.numeric(pca_t$PC2)
+
+# 4. Calculate variance explained using the 'Eigenvalue' column from your raw data
+# (PC variance / total variance)
+
+eig <- as.numeric(pca$Eigenvalue)
+var_explained <- eig/sum(eig) * 100
+
+p <- ggplot(pca_t, aes(x = PC1, y = PC2, color = condition)) +
+  geom_point(size = 4, alpha = 0.8) +
+
+  scale_color_manual(values = c(
+    "10"    = "#E41A1C",
+    "100"   = "#377EB8",
+    "1000"  = "#4DAF4A",
+    "5000"  = "#984EA3",
+    "Mix"   = "#FF7F00"
+  )) +
+
+  labs(
+    title = "EL4 ulATACseq PCA",
+    color = "Condition",
+    x = sprintf("PC1 (%.1f%%)", var_explained[1]),
+    y = sprintf("PC2 (%.1f%%)", var_explained[2])
+  ) +
+
+  theme_classic(base_size = 14) +
+
+  theme(
+    plot.title = element_text(
+      face = "bold",
+      hjust = 0.5,
+      size = 16
+    ),
+    axis.title = element_text(
+      face = "bold"
+    ),
+    axis.text = element_text(
+      size = 12
+    ),
+    legend.title = element_text(
+      face = "bold"
+    ),
+    legend.text = element_text(
+      size = 12
+    ),
+    panel.grid.major.y = element_line(
+      color = "grey90",
+      size = 0.5
+    )
+  )
+
+print(p)
+```
+
+#Venn diagram
+#erikson@maximus:/data/jenuwein/erikson/2026/ulATAC/ATAC_HepG2_Snyder_analysis/hg38_AOS/peakset$ bedtools intersect -a peaks.bed -b /data/jenuwein/erikson/2026/ulATAC/Project_3925/hg38_AOS/peakset/peaks.bed >common_peaks.bed
+
+
+```{r pressure, echo=FALSE}
+library(VennDiagram)
+
+# Generate the fixed Venn Diagram
+venn_plot <- draw.pairwise.venn(
+  area1 = 187381,         
+  area2 = 73852,          
+  cross.area = 66055,     
+  category = c("HEPG2 ENCODE\n(187,381)", "HEPG2 ulATAC\n(73,852)"),
+  
+  # --- THE FIXES FOR CUT-OFF TEXT ---
+  margin = 0.1,                       # Adds 10% padding around the whole plot
+  cat.pos = c(-15, 15),               # Adjusted angles to position text better
+  cat.dist = c(0.08, 0.08),           # Distance of labels from circles
+  # ----------------------------------
+  
+  # Esthetics and Styling
+  fill = c("#440154FF", "#21908CFF"), 
+  alpha = c(0.6, 0.6),                
+  lty = "blank",                      
+  
+  # Text styling
+  col = "white",                      
+  cex = 1.5,                          
+  cat.cex = 1.3                       
+)
+
+# Save it using the png() device approach (removes ggsave boundary limits)
+png(
+  filename = "Fig2.panelD.pca.png", 
+  width = 6, 
+  height = 5, 
+  units = "in", 
+  res = 300 
+)
+
+grid.draw(venn_plot)
+dev.off()
+```
+#El4 peaks intersected with published data
+#erikson@maximus:/data/jenuwein/erikson/2026/ulATAC/ATAC_EL4_public/aos/AOS/peakset$ bedtools intersect -a peaks.bed -b /data/jenuwein/erikson/2026/ulATAC/Project_3925_mergedReps_AOS/aos/peaks/EL4.unique.peaks >common_peaks.bed
+
+```{r pressure, echo=FALSE}
+library(VennDiagram)
+
+# Generate the fixed Venn Diagram
+venn_plot <- draw.pairwise.venn(
+  area1 = 514625,         
+  area2 = 74221,          
+  cross.area = 60464,     
+  category = c("EL4 GSE87646\n(514,625)", "EL4 ulATAC\n(74,221)"),
+  
+  # --- THE FIXES FOR CUT-OFF TEXT ---
+  margin = 0.1,                       # Adds 10% padding around the whole plot
+  cat.pos = c(-15, 15),               # Adjusted angles to position text better
+  cat.dist = c(0.08, 0.08),           # Distance of labels from circles
+  # ----------------------------------
+  
+  # Esthetics and Styling
+  fill = c("#440154FF", "#21908CFF"), 
+  alpha = c(0.6, 0.6),                
+  lty = "blank",                      
+  
+  # Text styling
+  col = "white",                      
+  cex = 1.5,                          
+  cat.cex = 1.3                       
+)
+
+# Save it using the png() device approach (removes ggsave boundary limits)
+png(
+  filename = "Fig2.panelD.EL4.venn.pca.png", 
+  width = 6, 
+  height = 5, 
+  units = "in", 
+  res = 300 
+)
+
+grid.draw(venn_plot)
+dev.off()
+```
+
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
