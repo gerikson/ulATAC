@@ -1,0 +1,72 @@
+---
+title: "BarnyardPlots"
+author: "Galina Erikson"
+date: "2026-08-05"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+#BarnyardPlot
+```{r}
+library(ggplot2)
+
+x <- read.table(
+    "/data/jenuwein/erikson/2026/ulATAC/Project_3925_mergedReps_AOS_mouseHuman/filtered_bam/barnyard_counts.tsv",
+    header=FALSE,
+    sep="\t",
+    col.names=c("cell","mouse","human")
+)
+
+p<-ggplot(x, aes(
+    x=human,
+    y=mouse,
+    label=cell
+)) +
+    geom_point(size=3) +
+    geom_text(hjust=-0.1, size=3) +
+    scale_x_log10() +
+    scale_y_log10() +
+    theme_classic() +
+    labs(
+        x="Human fragments",
+        y="Mouse fragments",
+        title="Human-mouse barnyard plot (ulATAC)"
+    )
+
+p2<- ggplot(x, aes(
+    x=human,
+    y=mouse,
+    label=cell
+)) +
+    geom_point(size=3) +
+    geom_text(
+        hjust=-0.1,
+        vjust=0.5,
+        size=3
+    ) +
+    scale_x_log10(
+        expand = expansion(mult=c(0.2, 0.3))
+    ) +
+    scale_y_log10(
+        expand = expansion(mult=c(0.2, 0.3))
+    ) +
+    theme_classic() +
+    labs(
+        x="Human fragments",
+        y="Mouse fragments",
+        title="Human-mouse barnyard plot (ulATAC)"
+    )
+```
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE}
+plot(pressure)
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
