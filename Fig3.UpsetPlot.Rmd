@@ -1,0 +1,386 @@
+---
+title: "UpsetPlot"
+author: "Galina Erikson"
+date: "2026-08-10"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+
+```{r}
+
+library(GenomicRanges)
+library(rtracklayer)
+library(ComplexHeatmap) # Recommended for UpSet plots; alternative: library(UpSetR)
+library(dplyr)
+library(stringr)
+
+
+peak_dir <- "/data/jenuwein/erikson/2026/ulATAC/project_3910/hg38_AOS/peaks"
+setwd(peak_dir)
+
+
+peak_files <- list.files(pattern = "\\.filtered_peaks\\.narrowPeak$", full.names = TRUE)
+
+# Read peak files into a list of GRanges objects
+peak_list <- lapply(peak_files, function(f) {
+  import(f, format = "narrowPeak")
+})
+
+# Name the list elements using file basenames without extensions
+names(peak_list) <- gsub("\\.filtered_peaks\\.narrowPeak$", "", basename(peak_files))
+
+
+# Define condition groups by removing "_rep1" or "_rep2" suffixes
+groups <- gsub("_rep[12]$", "", names(peak_list))
+unique_groups <- unique(groups)
+
+merged_peak_list <- lapply(unique_groups, function(grp) {
+  # Get indices for replicates belonging to this group
+  rep_indices <- which(groups == grp)
+  reps <- peak_list[rep_indices]
+  
+  if (length(reps) == 1) {
+    return(reps[[1]])
+  } else {
+    # Union of both replicates: merge peak regions that overlap in either replicate
+    # (Alternatively, use 'intersect' or findOverlaps to require peak presence in BOTH)
+    return(reduce(c(reps[[1]], reps[[2]])))
+  }
+})
+names(merged_peak_list) <- unique_groups
+
+# Build dynamic presence/absence binary matrix for merged conditions
+mat_merged <- make_upset_matrix(merged_peak_list)
+
+# Plot UpSet diagram for merged conditions
+pdf("/data/jenuwein/erikson/Bhabesh/20260810_Project3910_UpSet_merged_conditions.pdf", width = 10, height = 5)
+m_merged <- make_comb_mat(mat_merged)
+print(
+  UpSet(
+    m_merged,
+    comb_order = order(comb_size(m_merged), decreasing = TRUE),
+    top_annotation = upset_top_annotation(m_merged, add_numbers = TRUE),
+    right_annotation = upset_right_annotation(m_merged, add_numbers = TRUE)
+  )
+)
+dev.off()
+```
+```{r}
+# 1. Load required libraries
+library(GenomicRanges)
+library(rtracklayer)
+library(ComplexHeatmap) # Recommended for UpSet plots; alternative: library(UpSetR)
+library(dplyr)
+library(stringr)
+
+# Set working directory to your peaks path
+peak_dir <- "/data/jenuwein/erikson/2026/ulATAC/project_3910/hg38_AOS/peaks"
+setwd(peak_dir)
+
+# 2. Get all narrowPeak files
+peak_files <- list.files(pattern = "\\.filtered_peaks\\.narrowPeak$", full.names = TRUE)
+
+# Read peak files into a list of GRanges objects
+peak_list <- lapply(peak_files, function(f) {
+  import(f, format = "narrowPeak")
+})
+
+# Name the list elements using file basenames without extensions
+names(peak_list) <- gsub("\\.filtered_peaks\\.narrowPeak$", "", basename(peak_files))
+
+# ----------------------------------------------------------------------
+# OPTION A: Plot all individual replicates directly
+# ----------------------------------------------------------------------
+
+make_upset_matrix <- function(gr_list) {
+  # Master set of all union genomic regions
+  all_peaks_union <- reduce(unlist(GRangesList(gr_list)))
+  
+  # Build a 0/1 binary presence matrix
+  mat <- sapply(gr_list, function(gr) {
+    as.integer(overlapsAny(all_peaks_union, gr))
+  })
+  
+  return(mat)
+}
+
+mat_reps <- make_upset_matrix(peak_list)
+
+# Plot UpSet diagram for all individual samples
+pdf("UpSet_all_replicates.pdf", width = 12, height = 6)
+m_reps <- make_comb_mat(mat_reps)
+print(UpSet(m_reps, comb_order = order(comb_size(m_reps), decreasing = TRUE)))
+dev.off()
+
+
+# ----------------------------------------------------------------------
+# OPTION B: Merge biological replicates per conditions
+# ----------------------------------------------------------------------
+# Define condition groups by removing "_rep1" or "_rep2" suffixes
+groups <- gsub("_rep[12]$", "", names(peak_list))
+unique_groups <- unique(groups)
+
+merged_peak_list <- lapply(unique_groups, function(grp) {
+  # Get indices for replicates belonging to this group
+  rep_indices <- which(groups == grp)
+  reps <- peak_list[rep_indices]
+  
+  if (length(reps) == 1) {
+    return(reps[[1]])
+  } else {
+    # Union of both replicates: merge peak regions that overlap in either replicate
+    # (Alternatively, use 'intersect' or findOverlaps to require peak presence in BOTH)
+    return(reduce(c(reps[[1]], reps[[2]])))
+  }
+})
+names(merged_peak_list) <- unique_groups
+
+# Build dynamic presence/absence binary matrix for merged conditions
+mat_merged <- make_upset_matrix(merged_peak_list)
+
+# Plot UpSet diagram for merged conditions
+pdf("UpSet_merged_conditions.pdf", width = 10, height = 5)
+m_merged <- make_comb_mat(mat_merged)
+print(
+  UpSet(
+    m_merged,
+    comb_order = order(comb_size(m_merged), decreasing = TRUE),
+    top_annotation = upset_top_annotation(m_merged, add_numbers = TRUE),
+    right_annotation = upset_right_annotation(m_merged, add_numbers = TRUE)
+  )
+)
+dev.off()
+
+```
+
+```{r}
+library(GenomicRanges)
+library(rtracklayer)
+library(UpSetR)
+
+# Set working directory
+setwd("/data/jenuwein/erikson/2026/ulATAC/project_3910/hg38_AOS/peaks")
+
+# 1. Read peak files
+peak_files <- list.files(pattern = "\\.filtered_peaks\\.narrowPeak$", full.names = TRUE)
+peak_list <- lapply(peak_files, function(f) import(f, format = "narrowPeak"))
+names(peak_list) <- gsub("\\.filtered_peaks\\.narrowPeak$", "", basename(peak_files))
+
+# 2. Merge replicates (Union)
+groups <- gsub("_rep[12]$", "", names(peak_list))
+unique_groups <- unique(groups)
+
+merged_peak_list <- lapply(unique_groups, function(grp) {
+  reps <- peak_list[groups == grp]
+  reduce(unlist(GRangesList(reps)))
+})
+names(merged_peak_list) <- unique_groups
+
+# 3. Create master union and binary matrix
+master_union <- reduce(unlist(GRangesList(merged_peak_list)))
+presence_df <- as.data.frame(lapply(merged_peak_list, function(gr) {
+  as.integer(overlapsAny(master_union, gr))
+}))
+
+# 4. Map original sample names to ordered short names
+# Original names: HepG2_omniATAC_LowCell_10, HepG2_omniATAC_HighCell_10000, etc.
+name_mapping <- c(
+  "HepG2_omniATAC_LowCell_10"     = "omniATAC_10",
+  "HepG2_omniATAC_LowCell_100"    = "omniATAC_100",
+  "HepG2_omniATAC_LowCell_1000"   = "omniATAC_1000",
+  "HepG2_omniATAC_LowCell_5000"   = "omniATAC_5000",
+  "HepG2_omniATAC_HighCell_5000"  = "omniATAC_5000_High",  # Note: You had both LowCell_5000 and HighCell_5000
+  "HepG2_omniATAC_HighCell_10000" = "omniATAC_10000",
+  "HepG2_omniATAC_HighCell_25000" = "omniATAC_25000",
+  "HepG2_omniATAC_HighCell_50000" = "omniATAC_50000"
+)
+
+# Apply renaming to dataframe columns
+colnames(presence_df) <- ifelse(
+  colnames(presence_df) %in% names(name_mapping),
+  name_mapping[colnames(presence_df)],
+  colnames(presence_df)
+)
+
+# 5. Define exact desired display order
+target_order <- c(
+  "omniATAC_10",
+  "omniATAC_100",
+  "omniATAC_1000",
+  "omniATAC_5000",
+  "omniATAC_5000_High",
+  "omniATAC_10000",
+  "omniATAC_25000",
+  "omniATAC_50000"
+)
+
+# Filter order vector to only sets actually present in dataframe
+sets_to_plot <- target_order[target_order %in% colnames(presence_df)]
+
+# 6. Plot with fixed set order
+pdf("UpSet_merged_conditions_ordered.pdf", width = 12, height = 7)
+
+upset(
+  presence_df,
+  sets = sets_to_plot,
+  keep.order = TRUE,            # Prevents UpSetR from sorting rows by total set size
+  nintersects = 25,
+  order.by = "freq",
+  decreasing = TRUE,
+  show.numbers = FALSE,
+  mb.ratio = c(0.6, 0.4),
+  point.size = 2.8,
+  line.size = 0.8,
+  text.scale = c(1.3, 1.2, 1.2, 1.1, 1.2, 1.2),
+  mainbar.y.label = "Peak Intersection Size",
+  sets.x.label = "Total Peaks per Condition"
+)
+
+dev.off()
+
+png(
+  filename = "UpSet_merged_conditions_ordered.png",
+  width = 12,
+  height = 7,
+  units = "in",
+  res = 300
+)
+
+upset(
+  presence_df,
+  sets = sets_to_plot,
+  keep.order = TRUE,            # Prevents UpSetR from sorting rows by total set size
+  nintersects = 25,
+  order.by = "freq",
+  decreasing = TRUE,
+  show.numbers = FALSE,
+  mb.ratio = c(0.6, 0.4),
+  point.size = 2.8,
+  line.size = 0.8,
+  text.scale = c(1.3, 1.2, 1.2, 1.1, 1.2, 1.2),
+  mainbar.y.label = "Peak Intersection Size",
+  sets.x.label = "Total Peaks per Condition"
+)
+
+# Close graphics device to write file to disk
+dev.off()
+```
+
+#Do the same for 3911
+```{r}
+library(GenomicRanges)
+library(rtracklayer)
+library(UpSetR)
+
+# Set working directory to project_3911 peaks
+setwd("/data/jenuwein/erikson/2026/ulATAC/project_3911/hg38_AOS/peaks")
+
+# 1. Read peak files
+peak_files <- list.files(pattern = "\\.filtered_peaks\\.narrowPeak$", full.names = TRUE)
+peak_list <- lapply(peak_files, function(f) import(f, format = "narrowPeak"))
+names(peak_list) <- gsub("\\.filtered_peaks\\.narrowPeak$", "", basename(peak_files))
+
+# 2. Merge replicates (Union of rep1, rep2, rep3, rep4, etc.)
+groups <- gsub("_rep[0-9]+$", "", names(peak_list))
+unique_groups <- unique(groups)
+
+merged_peak_list <- lapply(unique_groups, function(grp) {
+  reps <- peak_list[groups == grp]
+  reduce(unlist(GRangesList(reps)))
+})
+names(merged_peak_list) <- unique_groups
+
+# 3. Create master union and binary matrix
+master_union <- reduce(unlist(GRangesList(merged_peak_list)))
+presence_df <- as.data.frame(lapply(merged_peak_list, function(gr) {
+  as.integer(overlapsAny(master_union, gr))
+}))
+
+# 4. Map original sample names to ordered short names
+name_mapping <- c(
+  "HepG2_ulATAC_LowCell_10"     = "ulATAC_10",
+  "HepG2_ulATAC_LowCell_100"    = "ulATAC_100",
+  "HepG2_ulATAC_LowCell_1000"   = "ulATAC_1000",
+  "HepG2_ulATAC_LowCell_5000"   = "ulATAC_5000",
+  "HepG2_ulATAC_HighCell_5000"  = "ulATAC_5000_High",
+  "HepG2_ulATAC_HighCell_10000" = "ulATAC_10000",
+  "HepG2_ulATAC_HighCell_25000" = "ulATAC_25000",
+  "HepG2_ulATAC_HighCell_50000" = "ulATAC_50000"
+)
+
+# Apply renaming to dataframe columns
+colnames(presence_df) <- ifelse(
+  colnames(presence_df) %in% names(name_mapping),
+  name_mapping[colnames(presence_df)],
+  colnames(presence_df)
+)
+
+# 5. Define exact desired display order
+target_order <- c(
+  "ulATAC_10",
+  "ulATAC_100",
+  "ulATAC_1000",
+  "ulATAC_5000",
+  "ulATAC_5000_High",
+  "ulATAC_10000",
+  "ulATAC_25000",
+  "ulATAC_50000"
+)
+
+# Filter order vector to only sets actually present in dataframe
+sets_to_plot <- target_order[target_order %in% colnames(presence_df)]
+
+# 6. Export PDF
+pdf("ulATAC_UpSet_merged_conditions_ordered.pdf", width = 12, height = 7)
+
+upset(
+  presence_df,
+  sets = sets_to_plot,
+  keep.order = TRUE,            # Prevents UpSetR from sorting rows by total set size
+  nintersects = 25,
+  order.by = "freq",
+  decreasing = TRUE,
+  show.numbers = FALSE,
+  mb.ratio = c(0.6, 0.4),
+  point.size = 2.8,
+  line.size = 0.8,
+  text.scale = c(1.3, 1.2, 1.2, 1.1, 1.2, 1.2),
+  mainbar.y.label = "Peak Intersection Size",
+  sets.x.label = "Total Peaks per Condition"
+)
+
+dev.off()
+
+# 7. Export High-Res PNG (300 DPI)
+png(
+  filename = "UlATAC_UpSet_merged_conditions_ordered.png",
+  width = 12,
+  height = 7,
+  units = "in",
+  res = 300
+)
+
+upset(
+  presence_df,
+  sets = sets_to_plot,
+  keep.order = TRUE,            # Prevents UpSetR from sorting rows by total set size
+  nintersects = 25,
+  order.by = "freq",
+  decreasing = TRUE,
+  show.numbers = FALSE,
+  mb.ratio = c(0.6, 0.4),
+  point.size = 2.8,
+  line.size = 0.8,
+  text.scale = c(1.3, 1.2, 1.2, 1.1, 1.2, 1.2),
+  mainbar.y.label = "Peak Intersection Size",
+  sets.x.label = "Total Peaks per Condition"
+)
+
+dev.off()
+```
+
