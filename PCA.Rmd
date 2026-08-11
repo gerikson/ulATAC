@@ -62,6 +62,78 @@ ggplot(pca_t, aes(x = PC1, y = PC2, color = stage)) +
   theme_classic()
 ```
 
+#Adding the percentage to the plot
+```{r}
+library(ggplot2)
+
+# 1. Read deepTools PCA matrix
+pca <- read.table(
+  "/data/jenuwein/erikson/2026/ulATAC/bams_allData_withDiffATAC/bw/PCAeigenvalue.tab", 
+  header = TRUE, 
+  row.names = 1,
+  stringsAsFactors = FALSE
+)
+
+# 2. Extract Eigenvalues Safely
+if ("Eigenvalue" %in% rownames(pca)) {
+  # If Eigenvalue is a row
+  eig_vals <- as.numeric(pca["Eigenvalue", ])
+  pca_t <- as.data.frame(t(pca[rownames(pca) != "Eigenvalue", ]))
+} else if ("Eigenvalue" %in% colnames(pca)) {
+  # If Eigenvalue is a column
+  eig_vals <- as.numeric(pca$Eigenvalue)
+  pca_t <- as.data.frame(t(pca[, colnames(pca) != "Eigenvalue"]))
+} else {
+  # Fallback: assuming first row or column holds eigenvalues
+  eig_vals <- as.numeric(pca[1, ])
+  pca_t <- as.data.frame(t(pca[-1, ]))
+}
+
+# Remove any lingering NA values from eigenvalues
+eig_vals <- eig_vals[!is.na(eig_vals)]
+
+# Calculate variance percentage
+var_explained <- (eig_vals / sum(eig_vals)) * 100
+
+# 3. Format PC columns as numeric
+pca_t$PC1 <- as.numeric(pca_t[, 1])
+pca_t$PC2 <- as.numeric(pca_t[, 2])
+
+# 4. Stage name formatting & ordering
+pca_t$stage <- sub("_WT.*", "", rownames(pca_t))
+pca_t$stage <- gsub("^X", "", pca_t$stage)
+
+pca_t$stage <- factor(
+  pca_t$stage,
+  levels = c("Zygote", "2Cells", "8Cells", "Morula", "Blastocyst")
+)
+
+# 5. Plot
+ggplot(pca_t, aes(x = PC1, y = PC2, color = stage)) +
+  geom_point(size = 3, alpha = 0.85) +
+  scale_color_manual(
+    values = c(
+      "Zygote"     = "#E41A1C", # Vivid Red
+      "2Cells"     = "#FFD700", # Gold/Yellow (much more visible than pure yellow)
+      "8Cells"     = "#4DAF4A", # Green
+      "Morula"     = "#377EB8", # Blue
+      "Blastocyst" = "#984EA3"  # Purple
+    ),
+    breaks = c("Zygote", "2Cells", "8Cells", "Morula", "Blastocyst"),
+    labels = c("Zygote", "2Cell", "8Cell", "Morula", "Blastocyst")
+  ) +
+  labs(
+    x = sprintf("PC1 (%.1f%%)", var_explained[1]),
+    y = sprintf("PC2 (%.1f%%)", var_explained[2]),
+    color = "Stage"
+  ) +
+  theme_classic(base_size = 14) +
+  theme(
+    axis.title = element_text(face = "bold"),
+    legend.title = element_text(face = "bold")
+  )
+```
+
 #Doing a PCA for the treatment data plus zygote, eigenvectore generated:
 #(aos3) erikson@deep22:/data/jenuwein/erikson/2026/ulATAC/Project3915_treatment_plusZygotes/aos2/bw$ plotPCA --corData results.npz -o PCA.png --colors blue blue blue blue blue blue blue blue blue blue blue blue blue blue blue green green green green green green green green green green green green green green green green orange orange orange orange orange orange orange orange orange orange orange orange orange orange orange orange orange orange orange orange orange orange orange orange orange orange orange orange orange orange red red red red red red red red red red red red red red red red red red red red red red red red red red red red red --transpose --ntop 5000 --outFileNameData  PCAeigenvalue_treatmentData_Project3915_plusZygote.tab
 
@@ -93,4 +165,29 @@ p<-ggplot(pca_t, aes(x = PC1, y = PC2, color = stage)) +
   theme_classic()
 
 ggsave("/data/jenuwein/erikson/2026/ulATAC/Project3915_treatment_plusZygotes/PCA.png", plot = p, width = 6, height = 5, dpi = 300)
+```
+
+#PCA RNA
+```{r}
+pca <- read.table("/data/jenuwein/erikson/2026/ulATAC/RNAseq/PCA.bed_coverage.tsv", header = TRUE, row.names = 1)
+pca_t <- as.data.frame(t(pca))
+pca_t <- pca_t[rownames(pca_t) != "Eigenvalue", ]
+#pca_t$stage <- sub("Ctrl_*", "Ctrl", rownames(pca_t))
+#pca_t$stage <- sub("Treated_*", "Treated", rownames(pca_t))
+pca_t$stage <- sub("_\\d+", "", rownames(pca_t))
+pca_t$color <- with(pca_t, ifelse(stage == "Ctrl", "green",
+                          ifelse(stage == "Treated", "red", "black")))
+
+library(ggplot2)
+
+pca_t$PC1 <- pca_t[,1]
+pca_t$PC2 <- pca_t[,2]
+p<-ggplot(pca_t, aes(x = PC1, y = PC2, color = stage)) +
+  geom_point(size = 2) +
+  scale_color_manual(values = c(
+    "Ctrl" = "green",
+    "Treated" = "red"
+  )) +
+  theme_classic()
+
 ```
