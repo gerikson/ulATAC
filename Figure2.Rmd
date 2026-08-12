@@ -119,89 +119,93 @@ ggplot(df, aes(x = Condition, y = Peaks, fill = Replicate)) +
 ```{r pressure, echo=FALSE}
 library(ggplot2)
 
-# 1. Transpose the data so samples are rows and PCs are columns
-# (Assuming your input dataframe is named 'pca_raw')
-
 pca <- read.table(
-  "/data/jenuwein/erikson/2026/ulATAC/Project_3925/m39_AOS/bw/Eingenvectors.tab",
-  header = TRUE,
-  row.names = 1
+"/data/jenuwein/erikson/2026/ulATAC/Project_3925/m39_AOS/bw/Eingenvectors.tab",
+header = TRUE,
+row.names = 1
 )
 
-# Extract eigenvalues
+#Extract eigenvalues
+
 eig <- as.numeric(pca$Eigenvalue)
 var_explained <- eig/sum(eig) * 100
 
-# Transpose and remove Eigenvalue row
+#Transpose and remove Eigenvalue row
+
 pca_t <- as.data.frame(t(pca))
 pca_t <- pca_t[rownames(pca_t) != "Eigenvalue", ]
 
 #pca_t <- as.data.frame(t(pca[, 2:10])) # Exclude 'Component' and 'Eigenvalue' columns
-colnames(pca_t) <- c("PC1", "PC2", "PC3")  # Name the columns based on the rows
+colnames(pca_t) <- c("PC1", "PC2", "PC3") # Name the columns based on the rows
 
-# 2. Extract conditions from the new sample names (row names)
+#2. Extract conditions from the new sample names (row names)
+
 pca_t$condition <- case_when(
-  grepl("_10_", rownames(pca_t)) ~ "10",
-  grepl("_100_", rownames(pca_t)) ~ "100",
-  grepl("_1000_", rownames(pca_t)) ~ "1000",
-  grepl("_5000_", rownames(pca_t)) & !grepl("noMix", rownames(pca_t)) ~ "5000",
-  grepl("noMix", rownames(pca_t)) ~ "Mix",
-  TRUE ~ NA_character_
+grepl("10", rownames(pca_t)) ~ "10",
+grepl("100", rownames(pca_t)) ~ "100",
+grepl("1000", rownames(pca_t)) ~ "1000",
+grepl("5000", rownames(pca_t)) & !grepl("noMix", rownames(pca_t)) ~ "5000",
+grepl("noMix", rownames(pca_t)) ~ "Mix",
+TRUE ~ NA_character_
 )
 
-# Set the discrete factor levels for clean ordering in the legend
+#Set the discrete factor levels for clean ordering in the legend
+
 pca_t$condition <- factor(
-  pca_t$condition,
-  levels = c("10", "100", "1000", "5000", "Mix")
+pca_t$condition,
+levels = c("10", "100", "1000", "5000", "Mix")
 )
 
-# 3. Ensure PC coordinates are numeric
+#3. Ensure PC coordinates are numeric
+
 pca_t$PC1 <- as.numeric(pca_t$PC1)
 pca_t$PC2 <- as.numeric(pca_t$PC2)
 
-# 4. Calculate variance explained using the 'Eigenvalue' column from your raw data
-# (PC variance / total variance)
+#4. Calculate variance explained using the 'Eigenvalue' column from your raw data
+#(PC variance / total variance)
 
 eig <- as.numeric(pca$Eigenvalue)
 var_explained <- eig/sum(eig) * 100
 
-# 5. Plot with custom colors for each of the 5 groups
+#5. Plot with custom colors for each of the 5 groups
+
 p <- ggplot(pca_t, aes(x = PC1, y = PC2, color = condition)) +
-  geom_point(size = 4, alpha = 0.8) +
-  scale_color_manual(values = c(
-    "10"    = "#E41A1C", # Red
-    "100"   = "#377EB8", # Blue
-    "1000"  = "#4DAF4A", # Green
-    "5000"  = "#984EA3", # Purple
-    "Mix"   = "#FF7F00"  # Orange
-  )) +
-  labs(
-    color = "Condition",
-    x = sprintf("PC1 (%.1f%%)", var_explained[1]),
-    y = sprintf("PC2 (%.1f%%)", var_explained[2])
-  ) +
-  theme_classic()
+geom_point(size = 4, alpha = 0.8) +
+scale_color_manual(values = c(
+"10" = "#E41A1C", # Red
+"100" = "#377EB8", # Blue
+"1000" = "#4DAF4A", # Green
+"5000" = "#984EA3", # Purple
+"Mix" = "#FF7F00" # Orange
+)) +
+labs(
+color = "Condition",
+x = sprintf("PC1 (%.1f%%)", var_explained[1]),
+y = sprintf("PC2 (%.1f%%)", var_explained[2])
+) +
+theme_classic()
 
 print(p)
 
-# 1. Preferred Option: PDF (Vector format, perfect for publication text/plots)
+#1. Preferred Option: PDF (Vector format, perfect for publication text/plots)
+
 ggsave(
-  filename = "Fig2.panelB.pca.pdf",
-  plot = p,
-  device = "pdf",
-  width = 6,          # Width in inches
-  height = 5,         # Height in inches
-  units = "in"
+filename = "Fig2.panelB.pca.pdf",
+plot = p,
+device = "pdf",
+width = 6, # Width in inches
+height = 5, # Height in inches
+units = "in"
 )
 
 ggsave(
-  filename = "Fig2.panelB.pca.png",
-  plot = p,
-  device = "png",
-  width = 6,
-  height = 5,
-  units = "in",
-  dpi = 300           # High resolution requirement
+filename = "Fig2.panelB.pca.png",
+plot = p,
+device = "png",
+width = 6,
+height = 5,
+units = "in",
+dpi = 300 # High resolution requirement
 )
 
 
@@ -372,7 +376,7 @@ p <- ggplot(pca_t, aes(x = PC1, y = PC2, color = condition)) +
   )) +
 
   labs(
-    title = "EL4 ulATACseq PCA",
+    title = "HepG2 ulATACseq PCA",
     color = "Condition",
     x = sprintf("PC1 (%.1f%%)", var_explained[1]),
     y = sprintf("PC2 (%.1f%%)", var_explained[2])
