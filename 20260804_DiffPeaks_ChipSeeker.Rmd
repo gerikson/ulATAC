@@ -1,0 +1,309 @@
+---
+title: "DiffPeaks_ChipSeeker.Rmd"
+author: "Galina Erikson"
+date: "2026-08-04"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+library(ChIPseeker)
+library(TxDb.Mmusculus.UCSC.mm10.knownGene)
+library(org.Mm.eg.db)
+library(clusterProfiler)
+library(enrichplot)
+library(GenomicRanges)
+library(ggplot2)
+library(ggupset) 
+
+```
+
+
+
+```{r}
+txdb <- TxDb.Mmusculus.UCSC.mm10.knownGene
+orgdb <- "org.Mm.eg.db"
+```
+
+```{r}
+input_file <- "/data/akhtar/group6/erikson_for_babesh/20260729_project3996_project3997/ATAC_analyses_mergedReps/twogroup/comparison1/comparison1_diffacc_edgeR.tsv"
+ 
+#peaks_df <- read.csv(input_file, stringsAsFactors = FALSE)
+
+raw_lines <- readLines(input_file)
+raw_lines <- gsub("\\\\t", "\t", raw_lines)   # convert literal \t to real tabs
+peaks_df <- read.delim(text = raw_lines, stringsAsFactors = FALSE)
+ 
+peak_coords <- do.call(rbind, strsplit(peaks_df$peak_id, "\\|"))
+peaks_df$chr   <- paste0("chr", peak_coords[, 1])   # add "chr" prefix for UCSC-style TxDb
+peaks_df$start <- as.integer(peak_coords[, 2])
+peaks_df$end   <- as.integer(peak_coords[, 3])
+ 
+# Standardize column names to match downstream code
+peaks_df$log2FoldChange <- peaks_df$logFC
+peaks_df$padj           <- peaks_df$FDR
+ 
+ 
+## ---- 3. Define "changed" peaks --------------------------------------------
+ 
+# Thresholds - adjust to your study design
+log2fc_cutoff <- 1      # |log2FC| >= 1  (i.e. >=2-fold change)
+padj_cutoff   <- 0.05
+
+#we ignore the padj cutoff
+peaks_df$direction <- ifelse(peaks_df$log2FoldChange >=  log2fc_cutoff, "Increased",
+                       ifelse(peaks_df$log2FoldChange <= -log2fc_cutoff, "Decreased",
+                              "Unchanged"))
+ 
+changed_peaks_df <- subset(peaks_df, direction != "Unchanged")
+ 
+cat("Total peaks:", nrow(peaks_df), "\n")
+cat("Peaks with significant change in accessibility:", nrow(changed_peaks_df), "\n")
+cat("  Increased:", sum(changed_peaks_df$direction == "Increased"), "\n")
+cat("  Decreased:", sum(changed_peaks_df$direction == "Decreased"), "\n")
+ 
+ 
+## ---- 4. Convert to GRanges and annotate with ChIPseeker -------------------
+ 
+changed_gr <- GRanges(
+  seqnames = changed_peaks_df$chr,
+  ranges   = IRanges(start = changed_peaks_df$start, end = changed_peaks_df$end),
+  log2FoldChange = changed_peaks_df$log2FoldChange,
+  direction      = changed_peaks_df$direction
+)
+ 
+# annotatePeak assigns each peak to its nearest gene/genomic feature
+# (promoter, 5'UTR, exon, intron, downstream, distal intergenic, etc.)
+peakAnno <- annotatePeak(changed_gr,
+                          tssRegion = c(-3000, 3000),
+                          TxDb = txdb,
+                          annoDb = orgdb,
+                          level = "gene")
+ 
+peakAnno_df <- as.data.frame(peakAnno)
+ 
+# Save the annotated peak table
+write.csv(peakAnno_df, "/data/akhtar/group6/erikson_for_babesh/20260729_project3996_project3997/annotated_changed_peaks.8cells.csv", row.names = FALSE)
+ 
+ 
+pdf("/data/akhtar/group6/erikson_for_babesh/20260729_project3996_project3997/peak_annotation_summary.8cells.pdf", width = 8, height = 6)
+plotAnnoBar(peakAnno)
+plotDistToTSS(peakAnno)
+upsetplot(peakAnno)
+dev.off()
+
+```
+
+```{r}
+input_file <- "/data/akhtar/group6/erikson_for_babesh/20260729_project3996_project3997/ATAC_analyses_mergedReps/twogroup/comparison2/comparison2_diffacc_edgeR.tsv"
+ 
+#peaks_df <- read.csv(input_file, stringsAsFactors = FALSE)
+
+raw_lines <- readLines(input_file)
+raw_lines <- gsub("\\\\t", "\t", raw_lines)   # convert literal \t to real tabs
+peaks_df <- read.delim(text = raw_lines, stringsAsFactors = FALSE)
+ 
+peak_coords <- do.call(rbind, strsplit(peaks_df$peak_id, "\\|"))
+peaks_df$chr   <- paste0("chr", peak_coords[, 1])   # add "chr" prefix for UCSC-style TxDb
+peaks_df$start <- as.integer(peak_coords[, 2])
+peaks_df$end   <- as.integer(peak_coords[, 3])
+ 
+# Standardize column names to match downstream code
+peaks_df$log2FoldChange <- peaks_df$logFC
+peaks_df$padj           <- peaks_df$FDR
+ 
+ 
+## ---- 3. Define "changed" peaks --------------------------------------------
+ 
+# Thresholds - adjust to your study design
+log2fc_cutoff <- 1      # |log2FC| >= 1  (i.e. >=2-fold change)
+padj_cutoff   <- 0.05
+
+#we ignore the padj cutoff
+peaks_df$direction <- ifelse(peaks_df$log2FoldChange >=  log2fc_cutoff, "Increased",
+                       ifelse(peaks_df$log2FoldChange <= -log2fc_cutoff, "Decreased",
+                              "Unchanged"))
+ 
+changed_peaks_df <- subset(peaks_df, direction != "Unchanged")
+ 
+cat("Total peaks:", nrow(peaks_df), "\n")
+cat("Peaks with significant change in accessibility:", nrow(changed_peaks_df), "\n")
+cat("  Increased:", sum(changed_peaks_df$direction == "Increased"), "\n")
+cat("  Decreased:", sum(changed_peaks_df$direction == "Decreased"), "\n")
+ 
+ 
+## ---- 4. Convert to GRanges and annotate with ChIPseeker -------------------
+ 
+changed_gr <- GRanges(
+  seqnames = changed_peaks_df$chr,
+  ranges   = IRanges(start = changed_peaks_df$start, end = changed_peaks_df$end),
+  log2FoldChange = changed_peaks_df$log2FoldChange,
+  direction      = changed_peaks_df$direction
+)
+ 
+# annotatePeak assigns each peak to its nearest gene/genomic feature
+# (promoter, 5'UTR, exon, intron, downstream, distal intergenic, etc.)
+peakAnno <- annotatePeak(changed_gr,
+                          tssRegion = c(-3000, 3000),
+                          TxDb = txdb,
+                          annoDb = orgdb,
+                          level = "gene")
+ 
+peakAnno_df <- as.data.frame(peakAnno)
+ 
+# Save the annotated peak table
+write.csv(peakAnno_df, "/data/akhtar/group6/erikson_for_babesh/20260729_project3996_project3997/annotated_changed_peaks.Morula.csv", row.names = FALSE)
+ 
+ 
+pdf("/data/akhtar/group6/erikson_for_babesh/20260729_project3996_project3997/peak_annotation_summary.Morula.pdf", width = 8, height = 6)
+plotAnnoBar(peakAnno)
+plotDistToTSS(peakAnno)
+upsetplot(peakAnno)
+dev.off()
+
+```
+
+#Do some GO annotation
+```{r}
+input_file <- "/data/akhtar/group6/erikson_for_babesh/20260729_project3996_project3997/annotated_changed_peaks.8cells.csv"
+ 
+peakAnno_df <- read.csv(input_file, stringsAsFactors = FALSE)
+ 
+# geneId column holds Entrez IDs as ChIPseeker/annotatePeak assigns them.
+# Coerce to character (it may be read as numeric/integer for some rows).
+peakAnno_df$geneId <- as.character(peakAnno_df$geneId)
+ 
+## ---- 3. Build gene lists ---------------------------------------------------
+ 
+# Unique Entrez IDs, split by direction of accessibility change.
+# (A gene can appear more than once if multiple peaks map to it - dedupe.)
+genes_all  <- unique(na.omit(peakAnno_df$geneId))
+genes_up   <- unique(na.omit(peakAnno_df$geneId[peakAnno_df$direction == "Increased"]))
+genes_down <- unique(na.omit(peakAnno_df$geneId[peakAnno_df$direction == "Decreased"]))
+ 
+cat("Unique genes near changed peaks:", length(genes_all), "\n")
+cat("  Near increased-accessibility peaks:", length(genes_up), "\n")
+cat("  Near decreased-accessibility peaks:", length(genes_down), "\n")
+ 
+ 
+## ---- 4. Run GO enrichment (clusterProfiler::enrichGO) ---------------------
+ 
+run_GO <- function(gene_ids, ontology = "BP") {
+  if (length(gene_ids) < 3) {
+    warning("Fewer than 3 genes provided - skipping GO test for this set.")
+    return(NULL)
+  }
+  enrichGO(gene          = gene_ids,
+           OrgDb         = orgdb,
+           keyType       = "ENTREZID",
+           ont           = ontology,     # "BP", "MF", "CC", or "ALL"
+           pAdjustMethod = "BH",
+           pvalueCutoff  = 0.05,
+           qvalueCutoff  = 0.2,
+           readable      = TRUE)
+}
+ 
+# Biological Process enrichment for all changed peaks, and split by direction
+ego_all  <- run_GO(genes_all,  ontology = "BP")
+ego_up   <- run_GO(genes_up,   ontology = "BP")
+ego_down <- run_GO(genes_down, ontology = "BP")
+ 
+## ---- 5. Save result tables --------------------------------------------------
+ 
+if (!is.null(ego_all))  write.csv(as.data.frame(ego_all),  "/data/akhtar/group6/erikson_for_babesh/20260729_project3996_project3997/GO_BP_all_changed_peaks.8cells.csv",  row.names = FALSE)
+if (!is.null(ego_up))   write.csv(as.data.frame(ego_up),   "/data/akhtar/group6/erikson_for_babesh/20260729_project3996_project3997/GO_BP_increased_peaks.8cells.csv",    row.names = FALSE)
+if (!is.null(ego_down)) write.csv(as.data.frame(ego_down), "/data/akhtar/group6/erikson_for_babesh/20260729_project3996_project3997/GO_BP_decreased_peaks.8cells.csv",    row.names = FALSE)
+ 
+ 
+## ---- 6. Visualize GO results ------------------------------------------------
+ 
+pdf("/data/akhtar/group6/erikson_for_babesh/20260729_project3996_project3997/GO_enrichment_plots.8cells.pdf", width = 9, height = 7)
+ 
+if (!is.null(ego_all) && nrow(as.data.frame(ego_all)) > 0) {
+  print(dotplot(ego_all, showCategory = 20, title = "GO BP - All changed peaks"))
+ 
+  # Collapse redundant/similar GO terms for a cleaner enrichment map
+  ego_all_simplified <- simplify(ego_all, cutoff = 0.7, by = "p.adjust", select_fun = min)
+  print(emapplot(pairwise_termsim(ego_all_simplified), showCategory = 20))
+}
+ 
+if (!is.null(ego_up) && nrow(as.data.frame(ego_up)) > 0) {
+  print(dotplot(ego_up, showCategory = 20, title = "GO BP - Increased accessibility"))
+}
+ 
+if (!is.null(ego_down) && nrow(as.data.frame(ego_down)) > 0) {
+  print(dotplot(ego_down, showCategory = 20, title = "GO BP - Decreased accessibility"))
+}
+ 
+dev.off()
+ 
+cat("\nDone. Outputs written:\n",
+    " - GO_BP_all_changed_peaks.csv\n",
+    " - GO_BP_increased_peaks.csv\n",
+    " - GO_BP_decreased_peaks.csv\n",
+    " - GO_enrichment_plots.pdf\n")
+ 
+```
+##########
+Run enrichGo on cluster_3 SCR vs MOF
+```{r}
+#!/usr/bin/env Rscript
+
+# Load required libraries
+suppressPackageStartupMessages({
+  library(clusterProfiler)
+  library(org.Mm.eg.db)
+  library(ggplot2)
+})
+
+# 1. File path
+bed_file <- "/data/akhtar/group6/erikson_for_babesh/20260729_project3996_project3997/ATAC_analyses_mergedReps/bw/20260811_8cell_SCRvsMOF.cluster3.closestGene.bed"
+
+# 2. Read file and extract genes from Column 17
+df <- read.table(bed_file, header = FALSE, sep = "\t", stringsAsFactors = FALSE)
+
+# Column 17 split by ";"
+gene_info <- strsplit(df$V17, ";")
+ensembl_raw <- sapply(gene_info, function(x) x[1])
+
+# Strip version suffix (e.g., ENSMUSG00000046337.17 -> ENSMUSG00000046337)
+ensembl_clean <- sub("\\..*", "", ensembl_raw)
+unique_genes <- unique(na.omit(ensembl_clean))
+
+cat(sprintf("Extracted %d unique Ensembl Gene IDs from Column 17.\n", length(unique_genes)))
+
+# 3. Run enrichGO for Biological Process (BP)
+ego_bp <- enrichGO(
+  gene          = unique_genes,
+  OrgDb         = org.Mm.eg.db,
+  keyType       = "ENSEMBL",
+  ont           = "BP",               # Options: "BP" (Biological Process), "MF", "CC", or "ALL"
+  pAdjustMethod = "BH",
+  pvalueCutoff  = 0.05,
+  qvalueCutoff  = 0.2
+)
+
+# 4. Save CSV and generate Dotplot
+if (!is.null(ego_bp) && nrow(as.data.frame(ego_bp)) > 0) {
+  # Simplify redundant terms
+  ego_bp_simple <- simplify(ego_bp, cutoff = 0.7, by = "p.adjust", select_fun = min)
+  
+  # Save tables
+  write.csv(as.data.frame(ego_bp), "cluster3_GO_BP_all.csv", row.names = FALSE)
+  write.csv(as.data.frame(ego_bp_simple), "cluster3_GO_BP_simplified.csv", row.names = FALSE)
+  
+  # Save Dotplot visualization
+  p <- dotplot(ego_bp_simple, showCategory = 15) + 
+       ggtitle("GO Biological Process: Cluster 3 Closest Genes") +
+       theme_minimal()
+       
+  ggsave("cluster3_GO_BP_dotplot.png", plot = p, width = 8, height = 6, dpi = 300)
+  cat("Saved GO results to 'cluster3_GO_BP_simplified.csv' and 'cluster3_GO_BP_dotplot.png'.\n")
+} else {
+  cat("No significantly enriched GO terms found at pvalueCutoff = 0.05.\n")
+}
+```
