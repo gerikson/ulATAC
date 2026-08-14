@@ -307,3 +307,61 @@ if (!is.null(ego_bp) && nrow(as.data.frame(ego_bp)) > 0) {
   cat("No significantly enriched GO terms found at pvalueCutoff = 0.05.\n")
 }
 ```
+#cluster 3 Morula
+```{r}
+#!/usr/bin/env Rscript
+
+# Load required libraries
+suppressPackageStartupMessages({
+  library(clusterProfiler)
+  library(org.Mm.eg.db)
+  library(ggplot2)
+})
+
+# 1. File path
+bed_file <- "/data/akhtar/group6/erikson_for_babesh/20260729_project3996_project3997/ATAC_analyses_mergedReps/bw/20260811_Morula.cluster3.closestGene.bed"
+
+# 2. Read file and extract genes from Column 17
+df <- read.table(bed_file, header = FALSE, sep = "\t", stringsAsFactors = FALSE)
+
+# Column 17 split by ";"
+gene_info <- strsplit(df$V17, ";")
+ensembl_raw <- sapply(gene_info, function(x) x[1])
+
+# Strip version suffix (e.g., ENSMUSG00000046337.17 -> ENSMUSG00000046337)
+ensembl_clean <- sub("\\..*", "", ensembl_raw)
+unique_genes <- unique(na.omit(ensembl_clean))
+
+cat(sprintf("Extracted %d unique Ensembl Gene IDs from Column 17.\n", length(unique_genes)))
+
+# 3. Run enrichGO for Biological Process (BP)
+ego_bp <- enrichGO(
+  gene          = unique_genes,
+  OrgDb         = org.Mm.eg.db,
+  keyType       = "ENSEMBL",
+  ont           = "ALL",               # Options: "BP" (Biological Process), "MF", "CC", or "ALL"
+  pAdjustMethod = "BH",
+  pvalueCutoff  = 0.05,
+  qvalueCutoff  = 0.2
+)
+
+# 4. Save CSV and generate Dotplot
+if (!is.null(ego_bp) && nrow(as.data.frame(ego_bp)) > 0) {
+  # Simplify redundant terms
+  ego_bp_simple <- simplify(ego_bp, cutoff = 0.7, by = "p.adjust", select_fun = min)
+  
+  # Save tables
+  write.csv(as.data.frame(ego_bp), "cluster3_GO_BP_all.Morula.csv", row.names = FALSE)
+  write.csv(as.data.frame(ego_bp_simple), "cluster3_GO_BP_simplified.Morula.csv", row.names = FALSE)
+  
+  # Save Dotplot visualization
+  p <- dotplot(ego_bp_simple, showCategory = 15) + 
+       ggtitle("GO Biological Process: Cluster 3 Closest Genes") +
+       theme_minimal()
+       
+  ggsave("cluster3_GO_BP_dotplot.Morula.png", plot = p, width = 8, height = 6, dpi = 300)
+  cat("Saved GO results to 'cluster3_GO_BP_simplified.Morula.csv' and 'cluster3_GO_BP_dotplot.Morula.png'.\n")
+} else {
+  cat("No significantly enriched GO terms found at pvalueCutoff = 0.05.\n")
+}
+```
