@@ -248,6 +248,88 @@ cat("\nDone. Outputs written:\n",
     " - GO_enrichment_plots.pdf\n")
  
 ```
+#Do some GO annotation Morula
+```{r}
+input_file <- "/data/akhtar/group6/erikson_for_babesh/20260729_project3996_project3997/annotated_changed_peaks.Morula.csv"
+ 
+peakAnno_df <- read.csv(input_file, stringsAsFactors = FALSE)
+ 
+# geneId column holds Entrez IDs as ChIPseeker/annotatePeak assigns them.
+# Coerce to character (it may be read as numeric/integer for some rows).
+peakAnno_df$geneId <- as.character(peakAnno_df$geneId)
+ 
+## ---- 3. Build gene lists ---------------------------------------------------
+ 
+# Unique Entrez IDs, split by direction of accessibility change.
+# (A gene can appear more than once if multiple peaks map to it - dedupe.)
+genes_all  <- unique(na.omit(peakAnno_df$geneId))
+genes_up   <- unique(na.omit(peakAnno_df$geneId[peakAnno_df$direction == "Increased"]))
+genes_down <- unique(na.omit(peakAnno_df$geneId[peakAnno_df$direction == "Decreased"]))
+ 
+cat("Unique genes near changed peaks:", length(genes_all), "\n")
+cat("  Near increased-accessibility peaks:", length(genes_up), "\n")
+cat("  Near decreased-accessibility peaks:", length(genes_down), "\n")
+ 
+ 
+## ---- 4. Run GO enrichment (clusterProfiler::enrichGO) ---------------------
+ 
+run_GO <- function(gene_ids, ontology = "BP") {
+  if (length(gene_ids) < 3) {
+    warning("Fewer than 3 genes provided - skipping GO test for this set.")
+    return(NULL)
+  }
+  enrichGO(gene          = gene_ids,
+           OrgDb         = orgdb,
+           keyType       = "ENTREZID",
+           ont           = ontology,     # "BP", "MF", "CC", or "ALL"
+           pAdjustMethod = "BH",
+           pvalueCutoff  = 0.05,
+           qvalueCutoff  = 0.2,
+           readable      = TRUE)
+}
+ 
+# Biological Process enrichment for all changed peaks, and split by direction
+ego_all  <- run_GO(genes_all,  ontology = "BP")
+ego_up   <- run_GO(genes_up,   ontology = "BP")
+ego_down <- run_GO(genes_down, ontology = "BP")
+ 
+## ---- 5. Save result tables --------------------------------------------------
+ 
+if (!is.null(ego_all))  write.csv(as.data.frame(ego_all),  "/data/akhtar/group6/erikson_for_babesh/20260729_project3996_project3997/GO_BP_all_changed_peaks.Morula.csv",  row.names = FALSE)
+if (!is.null(ego_up))   write.csv(as.data.frame(ego_up),   "/data/akhtar/group6/erikson_for_babesh/20260729_project3996_project3997/GO_BP_increased_peaks.Morula.csv",    row.names = FALSE)
+if (!is.null(ego_down)) write.csv(as.data.frame(ego_down), "/data/akhtar/group6/erikson_for_babesh/20260729_project3996_project3997/GO_BP_decreased_peaks.Morula.csv",    row.names = FALSE)
+ 
+ 
+## ---- 6. Visualize GO results ------------------------------------------------
+ 
+pdf("/data/akhtar/group6/erikson_for_babesh/20260729_project3996_project3997/GO_enrichment_plots.Morula.pdf", width = 9, height = 7)
+ 
+if (!is.null(ego_all) && nrow(as.data.frame(ego_all)) > 0) {
+  print(dotplot(ego_all, showCategory = 20, title = "GO BP - All changed peaks"))
+ 
+  # Collapse redundant/similar GO terms for a cleaner enrichment map
+  ego_all_simplified <- simplify(ego_all, cutoff = 0.7, by = "p.adjust", select_fun = min)
+  print(emapplot(pairwise_termsim(ego_all_simplified), showCategory = 20))
+}
+ 
+if (!is.null(ego_up) && nrow(as.data.frame(ego_up)) > 0) {
+  print(dotplot(ego_up, showCategory = 20, title = "GO BP - Increased accessibility"))
+}
+ 
+if (!is.null(ego_down) && nrow(as.data.frame(ego_down)) > 0) {
+  print(dotplot(ego_down, showCategory = 20, title = "GO BP - Decreased accessibility"))
+}
+ 
+dev.off()
+ 
+cat("\nDone. Outputs written:\n",
+    " - GO_BP_all_changed_peaks.csv\n",
+    " - GO_BP_increased_peaks.csv\n",
+    " - GO_BP_decreased_peaks.csv\n",
+    " - GO_enrichment_plots.pdf\n")
+ 
+```
+
 ##########
 Run enrichGo on cluster_3 SCR vs MOF
 ```{r}
@@ -281,7 +363,7 @@ ego_bp <- enrichGO(
   gene          = unique_genes,
   OrgDb         = org.Mm.eg.db,
   keyType       = "ENSEMBL",
-  ont           = "BP",               # Options: "BP" (Biological Process), "MF", "CC", or "ALL"
+  ont           = "ALL",               # Options: "BP" (Biological Process), "MF", "CC", or "ALL"
   pAdjustMethod = "BH",
   pvalueCutoff  = 0.05,
   qvalueCutoff  = 0.2
